@@ -1,0 +1,412 @@
+#!/bin/bash
+copyright () {
+	echo -e "
+daisync, a time-machine-backup program.
+Written by Manhong Dai, MBNI, University of Michigan.
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU GPL v3, and these copyright/history lines must stay
+untouched.
+There is NO WARRANTY, to the extent permitted by law.
+See http://daisync.sf.net or https://github.com/daimh/daisync for detail
+
+History:
+20190124 github release
+20190101 check 0000
+20181214 cp -aprl
+20181205
+20181204 archive mode modification; switch to git for version control
+4.0.3, Mar 23, 2018, .daisync-setting file location and .daisync-exclude-from
+4.0.2, Feb 23, 2017, archive option -a weekly/monthly/yearly
+4.0.1, Oct 27, 2014, fix a bug that non-daisync folder might crash daisync-plot
+			change underline to dash for all command or temp files
+4.0.0, Aug 14, 2013, gluster support
+3.0.4, May 28, 2013, if .daisync exists, remove oldest folder instead of
+                       exception
+3.0.3, Apr 29, 2013, return 51,52,53 if modown is wrong
+3.0.1, Aug 30, 2012, remove all ACL before modown, and some minor changes
+3.0.0, May 01, 2012, Major updates, including
+                       daisync-locate to locate files much faster than 'find'
+                       option changes
+2.3.0, Jan 19, 2012, -i -> -m modown file is not used in default
+2.2,   Sep 30, 2011, minor modification on the plot and log
+2.0,   Jan 13, 2011, minor modification on the plot and log
+1.10,  Jul 27, 2010, performance improvement, command argument in log,
+                        split lock and log, temp file location, plot tool
+                        daisync-plot, etc.
+1.0,   Mar 14, 2009
+"
+	exit 0
+}
+usage () {
+	echo -e "Time-machine-backup SOURCE to DEST.
+Usage:: daisync [OPTION]... DEST
+  Basic:
+  -a ARCHIVE    weekly/monthly/yearly archive
+  -n NUM        number of backup. default is 100
+  -s SRC        Data source, such as SERVER1:/home or
+                  \"-e 'ssh -p 22' SERVER1:/home\"
+                  SRC is directly passed to rsync, thus it can be local,
+                  rsync:// or rsync over remote shell, including ssh and rsh
+                  To backup gluster storage node, multiple '-s' are needed
+  -p            generate plot report
+  -h            display this help and exit
+  -v            output version information and exit
+  Advanced:
+  -S            shuffle source list
+  -m            use DEST/.daisync-modown file to change mode/ownership, root only
+  -d MODE       generate locate database to enable daisync-locate to locate
+                  file quickly, and set the database file's MODE, which should
+                  be set to 400 to forbid other user to see backup file names
+  -l NUM        find files that are bigger than NUM megabytes and moved, and
+                  re-hard-link them
+  -k MAX_PERCENTAGE_OF_DF:MINIMUM_NUM_OF_BACKUP
+                if df reports use% of backup file system is greater than 
+                  MAX_PERCENTAGE_OF_DF, older backups will be removed until
+                  there are only MINIMUM_NUM_OF_BACKUP of backups are left. 
+                     
+DEST must be a local folder."
+	exit 1
+}
+ARGLIST=$*
+((NUM=100))
+((MEGA=-1))
+KEEP=no
+PLOT=no
+MODOWN_OPT=no
+DB_MODE=no
+((NODES=0))
+SRCS=()
+SHUF=no
+while getopts "a:n:s:pSmd:l:k:hv" FLAG
+do
+	case "$FLAG" in
+		a)
+			ARCHIVE=$OPTARG
+			if [ "$ARCHIVE" != "weekly" -a "$ARCHIVE" != "monthly" -a "$ARCHIVE" != "yearly" ]
+			then
+				echo -e "'-a' is wrong" && exit 1
+			fi
+			;;
+		n)
+			((NUM=$OPTARG))
+			[ $NUM -le 0 ] && echo -e "'-n' is wrong" && exit 1
+			[ $NUM -ge 10000 ] && echo -e "'-n' is wrong"&& exit 1
+			;;
+		s)
+			((NODES++))
+			SRCS[$NODES]="$OPTARG"
+			;;
+		p)
+			PLOT=yes
+			;;
+		S)
+			SHUF=yes
+			;;
+		m)
+			MODOWN_OPT=yes
+			;;
+		d)
+			DB_MODE=$OPTARG
+			;;
+		l)
+			((MEGA=$OPTARG))
+			[[ "$MEGA" != "$OPTARG" ]] && echo "'-l' is wrong" && exit 1
+			;;
+		k)
+			STR=$OPTARG
+			KEEP=yes
+			(( KEEP_DFPCT=$(echo $STR | cut -d : -f 1) ))
+			(( KEEP_BKNUM=$(echo $STR | cut -d : -f 2) ))
+			;;
+		h)
+			usage
+			;;
+		v)
+			copyright
+			;;
+		*)
+			echo "Wrong option"
+			usage
+			;;
+	esac
+done
+if [ "$KEEP" = "yes" ]
+then
+	[[ $KEEP_DFPCT -ge 100 || $KEEP_DFPCT -le 0 || $KEEP_BKNUM -le 0 || $KEEP_BKNUM -ge $NUM ]] && echo -e "'-k' is wrong\n" && exit 1
+fi
+((RIGHT=$#-$OPTIND))
+if [ $RIGHT -ne 0 ]
+then
+	usage
+fi
+if [ $NODES -eq 0 ]
+then
+	usage
+fi
+((OPTIND--))
+shift $OPTIND
+DEST=$1
+if [ ! -d "$DEST" ]
+then
+	echo "DEST folder '$DEST' doesn't exist"
+	exit 1
+fi
+if [ ! -d "$DEST/0000" ]
+then
+	echo "mkdir '$DEST/0000' to initialize the daisync folder for your first daisync run"
+	exit 1
+fi
+if [ "$MODOWN_OPT" = "yes" -a "$UID" != "0" ]
+then
+	echo "-m must be run as root"
+	exit 1
+fi
+need_command() {
+	if ! which $1 &> /dev/null
+	then
+		echo "Missing command $1"
+		exit 1
+	fi
+}
+for CMD in flock rsync fuser df
+do
+	need_command $CMD
+done
+[ $MEGA -ge 0 ] && need_command md5sum
+[ "$PLOT" = "yes" ] && need_command daisync-plot
+[ "$SHUF" = "yes" ] && need_command shuf
+if [ "$DB_MODE" != "no" ]
+then
+	need_command updatedb
+	touch $DEST/.daisync-tempfile
+	if chmod $DB_MODE $DEST/.daisync-tempfile
+	then
+		rm -f $DEST/.daisync-tempfile
+	else
+		rm -f $DEST/.daisync-tempfile
+		echo "MODE for -d cannot be used with chmod"
+		exit 1
+	fi
+fi
+(
+if ! flock -n 77
+then
+	echo "A previous daisync is still running, process id are"
+	fuser "$DEST/.daisync-lock"
+	exit 1
+fi
+echo "[$(date '+%F %H:%M:%S')]##DAISYNC BEGIN (daisync $ARGLIST)"
+if [ $NUM -gt 1 ]
+then
+	((LAST=NUM-1))
+	LAST=$(printf "%04d" $LAST)
+fi
+[ ! -d "$DEST/.daisync" ] && mkdir "$DEST/.daisync"
+rm -f "$DEST/.daisync/.daisync-df"
+if [ "$KEEP" = "yes" ]
+then
+while :
+do
+	ps $$ &> /dev/null || break
+	((CUR_DFPCT=$(df -P "$DEST" | tail -n 1 |awk '{print $5}' | sed -e "s/%//") ))
+	if [[ $CUR_DFPCT -lt $KEEP_DFPCT ]] 
+	then
+		if [ -f "$DEST/.daisync/.daisync-df" ]
+		then
+			break
+		else
+			sleep 60 
+			continue
+		fi
+	fi
+	(( CUR_BKNUM=$( (cd $DEST && ls -d ????) | wc -l ) ))
+	[[ $CUR_BKNUM -lt $KEEP_BKNUM ]] && break
+	LAST=$( (cd $DEST && ls -d ????) | sort -r | head -n 1 )
+	echo "[$(date '+%F %H:%M:%S')]##DAISYNC REMOVING $LAST"
+	( cd "$DEST" && rm -rf $LAST )
+done
+fi &
+
+if [ "$SHUF" = "yes" ]
+then
+	IDX_LIST=$(seq $NODES | shuf)
+else
+	IDX_LIST=$(seq $NODES)
+fi
+for IDX in $IDX_LIST
+do
+	PARAMS="-a"
+	if [ -d "$DEST/0000" ]
+	then
+		PARAMS="$PARAMS --link-dest=../0000"
+	fi
+	if [ $NODES -eq 0 ]
+	then
+		PARAMS="$PARAMS --delete"
+	fi
+	if [ -f "$DEST/.daisync-exclude-from" ]
+	then
+		PARAMS="$PARAMS --exclude-from=$DEST/.daisync-exclude-from"
+	fi
+	echo "[$(date '+%F %H:%M:%S')]##rsync $PARAMS ${SRCS[$IDX]} \"$DEST/.daisync\"" 
+	bash -c "rsync $PARAMS ${SRCS[$IDX]} \"$DEST/.daisync\""
+	((DAISYNC_EXIT=$?))
+	if [ $DAISYNC_EXIT -ne 0 -a $DAISYNC_EXIT -ne 23 -a $DAISYNC_EXIT -ne 24 ]
+	then
+		echo "rsync.$IDX failed with code $DAISYNC_EXIT"
+		exit $DAISYNC_EXIT
+	fi
+done
+((MODOWN_EXIT=0))
+if [ -f "$DEST/.daisync-modown" -a "$MODOWN_OPT" = "yes" ]
+then
+	echo "[$(date '+%F %H:%M:%S')]##MODOWN"
+	WORKDIR="$PWD"
+	grep -v "^#" "$DEST/.daisync-modown" | sed -e "s/\r//" | while read LN
+	do
+		cd $WORKDIR
+		((NF=$(echo $LN|awk '{print NF}')))
+		if [ $NF -eq 0 ]
+		then
+			continue
+		elif [ $NF -ne 3 -a $NF -ne 4 ]
+		then
+			echo "File .daisync-modown, line '$LN' is wrong"
+			((MODOWN_EXIT=51))
+			continue
+		fi
+		FOLDER=$(echo $LN|awk '{print $1}')
+		OWN=$(echo $LN|awk '{print $2}')
+		MOD=$(echo $LN|awk '{print $3}')
+		REC=$(echo $LN|awk '{print $4}')
+		cd "$DEST/.daisync"
+		BASEDIR="$PWD"
+		if ! cd "$FOLDER"
+		then
+			echo "File .daisync-modown, folder '$FOLDER' doesn't exist"
+			((MODOWN_EXIT=52))
+			continue
+		fi
+#		ISSUB=$(echo "print '$PWD'.startswith('$BASEDIR')" | python)
+#		if [ "$ISSUB" = "True" ]
+		if [[ "$PWD" == "BASEDIR"* ]]
+		then
+			if [ "$REC" = "recursive" ]
+			then
+				find . -type d -exec setfacl -b {} \; -exec chown "$OWN" {} \; -exec chmod "$MOD" {} \;
+			else
+				setfacl -b . 
+				chown "$OWN" .
+				chmod "$MOD" .
+			fi
+		else
+			echo "File .daisync-modown, Line '$LN' is malicious!!!!!!"
+			((MODOWN_EXIT=53))
+			continue
+		fi
+	done
+	cd $WORKDIR
+fi
+if [ $MODOWN_EXIT -ne 0 ]
+then
+	echo "modown failed with code $MODOWN_EXIT"
+	exit $MODOWN_EXIT
+fi
+if [ $MEGA -ge 0 -a -d "$DEST/0000" -a -d "$DEST/.daisync" ]
+then
+	echo "[$(date '+%F %H:%M:%S')]##RELINK MOVED FILES"
+	NEW="$DEST/.daisync-link.new"
+	find "$DEST/.daisync" -type f -size +${MEGA}M -links 1 | grep -v '"\|	' | while read F
+	do
+		MD5=$(md5sum < "$F" |cut -c 1-32)
+		UGT=$(stat -c :%u:%g:%s:%Y "$F")
+		echo -e "$MD5$UGT\t\"$F\""
+	done | sort > "$NEW"
+	OLD="$DEST/.daisync-link.old"
+	( echo -n "find \"$DEST/0000\" -type f -a \( -false "
+	awk -F : '{printf "%s:%s:%s\n", $2, $3, $4}' "$NEW" | sort -u |while read F
+	do
+		U=$(echo $F|cut -d : -f 1)
+		G=$(echo $F|cut -d : -f 2)
+		B=$(echo $F|cut -d : -f 3)
+		echo -n " -o \( -size ${B}c -uid $U -gid $G \)"
+	done
+	echo " \)" ) | bash | grep -v '"\|	' | while read F
+	do
+		MD5=$(md5sum < "$F" |cut -c 1-32)
+		UGT=$(stat -c :%u:%g:%s:%Y "$F")
+		echo -e "$MD5$UGT\t\"$F\""
+	done | sort | awk -F "\t" 'BEGIN{PREV=""}{if ($1 != PREV) { print; PREV=$1} }' > "$OLD"
+	join -t "	" "$NEW" "$OLD" | awk -F "\t" '{print "ln -f", $3, $2}' | bash
+	rm "$OLD" "$NEW"
+fi
+if [ "$DB_MODE" != "no" ] 
+then
+	echo "[$(date '+%F %H:%M:%S')]##CREATE LOCATE DATABASE"
+	updatedb -l no -o "$DEST/.daisync/.daisync-locate.db" -U "$(cd $DEST/.daisync/; pwd)"
+	chmod $DB_MODE "$DEST/.daisync/.daisync-locate.db"
+fi
+chmod u+rwx "$DEST/.daisync"
+df -Pm "$DEST" > "$DEST/.daisync/.daisync-df"
+wait
+((NUM--))
+for IDX in $(seq -f %04g $NUM -1 0)
+do
+	if [ -d "$DEST/$IDX" ]
+	then
+		if [ "$IDX" = "$(printf "%04d" $NUM)" ]
+		then
+			rm -rf "$DEST/$IDX"
+		else
+			mv "$DEST/$IDX" "$DEST/$TO"
+		fi
+	fi
+	TO=$IDX
+done
+mv "$DEST/.daisync" "$DEST/0000"
+
+if [ "$ARCHIVE" != "" ] 
+then
+	(( NOW=$(date +%s) ))
+	if [ "$ARCHIVE" = "weekly" ] 
+	then
+		(( OFFSET=$(date --date="@$NOW" +%w) ))
+		(( START=$NOW - $OFFSET * 3600 * 24 ))
+	elif [ "$ARCHIVE" = "monthly" ] 
+	then
+		(( OFFSET=$(date --date="@$NOW" +%d) ))
+		(( START=$NOW - $OFFSET * 3600 * 24 ))
+	elif [ "$ARCHIVE" = "yearly" ] 
+	then
+		(( OFFSET=$(date --date="@$NOW" +%j) ))
+		(( START=$NOW - $OFFSET * 3600 * 24 ))
+	else
+		echo "ERR-001" && exit 1
+	fi
+	HAS_ARCHIVE=NO
+	for ((DT=$START; DT<=$NOW; DT+=3600 * 24))
+	do
+		DAY=$(date --date="@$DT" +%F)
+		if ls "$DEST"/$DAY-??-??-?? &> /dev/null
+		then
+			HAS_ARCHIVE=YES
+			break
+		fi
+	done
+	if [ "$HAS_ARCHIVE" = "NO" ]
+	then
+		NOW=$(date --date="@$NOW" +%F-%H-%M-%S)
+		cp -aprl "$DEST/0000" "$DEST/$NOW"
+	fi
+fi
+
+echo "[$(date '+%F %H:%M:%S')]##DAISYNC END"
+) &> "$DEST/.daisync-log.$$" 77> "$DEST/.daisync-lock"
+((DAISYNC_EXIT=$?))
+cat "$DEST/.daisync-log.$$"
+if [ $DAISYNC_EXIT -eq 0 ] 
+then 
+	mv "$DEST/.daisync-log.$$" "$DEST/0000/.daisync-log"
+	[ "$PLOT" = "yes" ] && daisync-plot -o "$DEST/0000/.daisync-report.png" "$DEST"
+fi
+exit $DAISYNC_EXIT
