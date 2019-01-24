@@ -6,7 +6,7 @@ $ git clone https://github.com/daimh/daisync.git
 
 $ cd daisync
 
-$ ./configure # add --prefix=<SOME DIRECTORY> if you are not root
+$ ./configure # add --prefix=\<SOME DIRECTORY> if you are not root
 
 $ make install
 
