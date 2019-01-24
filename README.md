@@ -6,10 +6,8 @@ $ git clone https://github.com/daimh/daisync.git
 
 $ cd daisync
 
-$ ./configure
+$ ./configure # add --prefix=.. if you are not root
 
 $ make install
 
-\###### check out scripts/tutorial.sh, or run it with the command below
-
-$ make check 
+$ make check \# if you want to run scripts/tutorial.sh
