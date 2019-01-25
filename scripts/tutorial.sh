@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -xe
-which tree md5sum shuf bc updatedb flock  rsync fuser df locate
+which tree md5sum shuf bc updatedb flock rsync fuser df locate
 
 ################source directory################################################
 #parepare directory 'source' for tests

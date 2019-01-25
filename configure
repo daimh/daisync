@@ -584,7 +584,16 @@ PACKAGE_STRING='daisync 20190124'
 PACKAGE_BUGREPORT='daimh@umich.edu'
 PACKAGE_URL=''
 
-ac_subst_vars='LTLIBOBJS
+ac_subst_vars='CHECK_updatedb
+CHECK_shuf
+CHECK_rsync
+CHECK_md5sum
+CHECK_locate
+CHECK_fuser
+CHECK_flock
+CHECK_df
+CHECK_bc
+LTLIBOBJS
 LIBOBJS
 AM_BACKSLASH
 AM_DEFAULT_VERBOSITY
@@ -3495,7 +3504,366 @@ $as_echo "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
 
 # Checks for programs.
+# Extract the first word of "bc", so it can be a program name with args.
+set dummy bc; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_bc+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_bc"; then
+  ac_cv_prog_CHECK_bc="$CHECK_bc" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_bc="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
 
+fi
+fi
+CHECK_bc=$ac_cv_prog_CHECK_bc
+if test -n "$CHECK_bc"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_bc" >&5
+$as_echo "$CHECK_bc" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_bc" != x"yes"; then
+	as_fn_error $? "Please install bc" "$LINENO" 5
+fi
+# Extract the first word of "df", so it can be a program name with args.
+set dummy df; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_df+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_df"; then
+  ac_cv_prog_CHECK_df="$CHECK_df" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_df="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_df=$ac_cv_prog_CHECK_df
+if test -n "$CHECK_df"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_df" >&5
+$as_echo "$CHECK_df" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_df" != x"yes"; then
+	as_fn_error $? "Please install df" "$LINENO" 5
+fi
+# Extract the first word of "flock", so it can be a program name with args.
+set dummy flock; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_flock+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_flock"; then
+  ac_cv_prog_CHECK_flock="$CHECK_flock" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_flock="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_flock=$ac_cv_prog_CHECK_flock
+if test -n "$CHECK_flock"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_flock" >&5
+$as_echo "$CHECK_flock" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_flock" != x"yes"; then
+	as_fn_error $? "Please install flock" "$LINENO" 5
+fi
+# Extract the first word of "fuser", so it can be a program name with args.
+set dummy fuser; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_fuser+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_fuser"; then
+  ac_cv_prog_CHECK_fuser="$CHECK_fuser" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_fuser="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_fuser=$ac_cv_prog_CHECK_fuser
+if test -n "$CHECK_fuser"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_fuser" >&5
+$as_echo "$CHECK_fuser" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_fuser" != x"yes"; then
+	as_fn_error $? "Please install fuser" "$LINENO" 5
+fi
+# Extract the first word of "locate", so it can be a program name with args.
+set dummy locate; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_locate+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_locate"; then
+  ac_cv_prog_CHECK_locate="$CHECK_locate" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_locate="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_locate=$ac_cv_prog_CHECK_locate
+if test -n "$CHECK_locate"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_locate" >&5
+$as_echo "$CHECK_locate" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_locate" != x"yes"; then
+	as_fn_error $? "Please install locate" "$LINENO" 5
+fi
+# Extract the first word of "md5sum", so it can be a program name with args.
+set dummy md5sum; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_md5sum+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_md5sum"; then
+  ac_cv_prog_CHECK_md5sum="$CHECK_md5sum" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_md5sum="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_md5sum=$ac_cv_prog_CHECK_md5sum
+if test -n "$CHECK_md5sum"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_md5sum" >&5
+$as_echo "$CHECK_md5sum" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_md5sum" != x"yes"; then
+	as_fn_error $? "Please install md5sum" "$LINENO" 5
+fi
+# Extract the first word of "rsync", so it can be a program name with args.
+set dummy rsync; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_rsync+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_rsync"; then
+  ac_cv_prog_CHECK_rsync="$CHECK_rsync" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_rsync="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_rsync=$ac_cv_prog_CHECK_rsync
+if test -n "$CHECK_rsync"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_rsync" >&5
+$as_echo "$CHECK_rsync" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_rsync" != x"yes"; then
+	as_fn_error $? "Please install rsync" "$LINENO" 5
+fi
+# Extract the first word of "shuf", so it can be a program name with args.
+set dummy shuf; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_shuf+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_shuf"; then
+  ac_cv_prog_CHECK_shuf="$CHECK_shuf" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_shuf="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_shuf=$ac_cv_prog_CHECK_shuf
+if test -n "$CHECK_shuf"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_shuf" >&5
+$as_echo "$CHECK_shuf" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_shuf" != x"yes"; then
+	as_fn_error $? "Please install shuf" "$LINENO" 5
+fi
+# Extract the first word of "updatedb", so it can be a program name with args.
+set dummy updatedb; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_CHECK_updatedb+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$CHECK_updatedb"; then
+  ac_cv_prog_CHECK_updatedb="$CHECK_updatedb" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_CHECK_updatedb="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+CHECK_updatedb=$ac_cv_prog_CHECK_updatedb
+if test -n "$CHECK_updatedb"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CHECK_updatedb" >&5
+$as_echo "$CHECK_updatedb" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test x"$CHECK_updatedb" != x"yes"; then
+	as_fn_error $? "Please install updatedb" "$LINENO" 5
+fi
 # Checks for libraries.
 
 # Checks for header files.
