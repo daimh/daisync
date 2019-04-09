@@ -10,6 +10,7 @@ There is NO WARRANTY, to the extent permitted by law.
 See http://daisync.sf.net or https://github.com/daimh/daisync for detail
 
 History:
+20190409 date +%d -> date +%_d, %j -> %_j
 20190124 github release
 20190101 check 0000
 20181214 cp -aprl
@@ -374,11 +375,11 @@ then
 		(( START=$NOW - $OFFSET * 3600 * 24 ))
 	elif [ "$ARCHIVE" = "monthly" ] 
 	then
-		(( OFFSET=$(date --date="@$NOW" +%d) ))
+		(( OFFSET=$(date --date="@$NOW" +%_d) ))
 		(( START=$NOW - $OFFSET * 3600 * 24 ))
 	elif [ "$ARCHIVE" = "yearly" ] 
 	then
-		(( OFFSET=$(date --date="@$NOW" +%j) ))
+		(( OFFSET=$(date --date="@$NOW" +%_j) ))
 		(( START=$NOW - $OFFSET * 3600 * 24 ))
 	else
 		echo "ERR-001" && exit 1
