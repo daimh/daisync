@@ -10,6 +10,7 @@ There is NO WARRANTY, to the extent permitted by law.
 See http://daisync.sf.net or https://github.com/daimh/daisync for detail
 
 History:
+20191119 log in archived folder
 20190409 date +%d -> date +%_d, %j -> %_j
 20190124 github release
 20190101 check 0000
@@ -397,10 +398,10 @@ then
 	if [ "$HAS_ARCHIVE" = "NO" ]
 	then
 		NOW=$(date --date="@$NOW" +%F-%H-%M-%S)
+		echo $NOW > "$DEST/0000/.daisync-archived"
 		cp -aprl "$DEST/0000" "$DEST/$NOW"
 	fi
 fi
-
 echo "[$(date '+%F %H:%M:%S')]##DAISYNC END"
 ) &> "$DEST/.daisync-log.$$" 77> "$DEST/.daisync-lock"
 ((DAISYNC_EXIT=$?))
@@ -408,6 +409,7 @@ cat "$DEST/.daisync-log.$$"
 if [ $DAISYNC_EXIT -eq 0 ] 
 then 
 	mv "$DEST/.daisync-log.$$" "$DEST/0000/.daisync-log"
+	[ "$ARCHIVE" != "" -a -f $DEST/0000/.daisync-archived ] && cp -p "$DEST/0000/.daisync-log" "$DEST/$(cat $DEST/0000/.daisync-archived)/.daisync-log"
 	[ "$PLOT" = "yes" ] && daisync-plot -o "$DEST/0000/.daisync-report.png" "$DEST"
 fi
 exit $DAISYNC_EXIT
