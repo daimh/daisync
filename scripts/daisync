@@ -10,7 +10,7 @@ There is NO WARRANTY, to the extent permitted by law.
 See http://daisync.sf.net or https://github.com/daimh/daisync for detail
 
 History:
-20191119 log in archived folder
+20191119 log in archived folder, always keep 0000 with -k
 20190409 date +%d -> date +%_d, %j -> %_j
 20190124 github release
 20190101 check 0000
@@ -221,9 +221,9 @@ do
 			continue
 		fi
 	fi
-	(( CUR_BKNUM=$( (cd $DEST && ls -d ????) | wc -l ) ))
+	(( CUR_BKNUM=$( (cd $DEST && ls -d ???? | grep -v 0000) | wc -l ) ))
 	[[ $CUR_BKNUM -lt $KEEP_BKNUM ]] && break
-	LAST=$( (cd $DEST && ls -d ????) | sort -r | head -n 1 )
+	LAST=$( (cd $DEST && ls -d ???? | grep -v 0000) | sort -r | head -n 1 )
 	echo "[$(date '+%F %H:%M:%S')]##DAISYNC REMOVING $LAST"
 	( cd "$DEST" && rm -rf $LAST )
 done
