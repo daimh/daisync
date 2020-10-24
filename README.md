@@ -12,40 +12,51 @@ $ mv daisync ~/bin/ # or any directory in your PATH
 1. prepare a directory for tests
 ```
 $ mkdir src
-$ seq 3 | split -l 1 - src/old
+$ seq 2 | split -l 1 - src/old
 $ tree src
 ```
 
 2. backs up all files under directory 'src' to 'dst'
 ```
 $ mkdir -p dst/0000
-$ daisync -n 9 -s src/ dst
+$ daisync -s src/ dst
 $ tree dst
 ```
 
 3. change some files in src, and back them up again
 ```
-$ seq 3 | split -l 1 - src/new
-$ daisync -n 9 -s src/ dst
+$ seq 2 | split -l 1 - src/new
+$ daisync -s src/ dst
 $ tree dst
 ```
 
 4. exclude a subdirectory from backup
 ```
 $ mkdir src/this-is-excluded-from-daisync
-$ touch src/this-is-exclude-from-daisync/demo
-$ daisync -n 9 -s src/ dst
+$ touch src/this-is-excluded-from-daisync/demo
+$ daisync -s src/ dst
 $ echo "*-excluded-from-daisync" > dst/.daisync-exclude-from
-$ daisync -n 9 -s src/ dst
+$ daisync -s src/ dst
 $ tree dst
 ```
 
 5. use rsync parameter to exclude file that is less/greater than 10 bytes
 ```
 $ seq 10 > src/big
-$ daisync -n 9 -s src/ dst
-$ daisync -n 9 -s "--max-size=10 src/" dst
+$ daisync -s src/ dst
+$ daisync -s "--max-size=10 src/" dst
 $ tree dst
+```
+
+6. relink moved big file to save space
+
+```
+$ seq 200000 > src/1M
+$ daisync -s src/ dst
+$ stat dst/0000/1M
+$ mv src/1M src/1M-MOVED
+$ daisync -l 1 -s src/ dst
+$ stat dst/0001/1M dst/0000/1M-MOVED | grep Inode #It shows the same Inode
 ```
 
 ## Help

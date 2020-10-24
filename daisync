@@ -42,7 +42,7 @@ ARGLIST=$@
 OPT_SHORT="hvn:a:s:dl:r:k:"
 OPT_LONG="help,verbose,num-of-backups:,archive-interval:,source:,updatedb,link-moved-file:,removal-percentage:,keep:"
 OPTS=$(getopt -o $OPT_SHORT --long $OPT_LONG -n daisync -- "$@")
-NUM=100
+NUM=10
 KEEP=2
 eval set -- "$OPTS"
 while :
@@ -50,7 +50,7 @@ do
 	case "$1" in
 #HELPME_START
 #NAME
-#	rsync-based time-machine-backup
+#	daisync, an rsync-based time-machine-backup tool
 #SYNOPSIS
 #	daisync [OPTION]... DEST
 #OPTIONS
@@ -59,7 +59,7 @@ do
 		-v | --verbose)
 			set -x
 			shift ;;
-		-n | --num-of-backups)	#=NUM, number of backups, default 100
+		-n | --num-of-backups)	#=NUM, maximum number of backups, default 10
 			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-001: invalid number: -c $2"
 			NUM=$2
 			shift 2 ;;
@@ -112,7 +112,7 @@ done
 [ $# -eq 1 ] || helpme "ERR-009: DEST must be specified"
 DEST=$1
 [ -d "$DEST" ] || helpme "ERR-010: DEST folder '$DEST' doesn't exist"
-[ -d "$DEST/0000" ] || helpme "ERR-011: '$DEST' is not a daisync directory. Or please run 'mkdir $DEST/0000' to initialize it"
+[ -d "$DEST/0000" ] || helpme "ERR-011: '$DEST' is not a daisync directory. Or please run 'mkdir $DEST/0000' to explicitly initialize it"
 
 (
 if ! flock -n 77
@@ -173,7 +173,7 @@ then
 		find "$DEST/0000" -type f -uid $STATU -gid $STATG -size ${STATS}c -exec bash -c "
 			if [ \"$HASH\" = \"\$(sha512sum \"{}\" |cut -c 1-128)\" -a \"\$(stat -c %Y \"{}\")\" = \"$STATY\" ]
 			then
-				echo \"linking: '{}'\" \"to\" \"'$FNEW'\"
+				echo \"[\$(date '+%F %H:%M:%S')]#linking: '{}'\" \"to\" \"'$FNEW'\"
 				ln -f \"{}\" '$FNEW'
 			else
 				exit 1
@@ -235,6 +235,7 @@ then
 	if [ "$HAS_ARCHIVE" = "NO" ]
 	then
 		NOW=$(date --date="@$NOW" +%F-%H-%M-%S)
+		echo "[$(date '+%F %H:%M:%S')]#creating $ARCHIVE archive"
 		echo $NOW > "$DEST/0000/.daisync-archived"
 		cp -aprl "$DEST/0000" "$DEST/$NOW"
 	fi
