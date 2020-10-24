@@ -70,7 +70,7 @@ do
 		-s | --source)	#=SOURCE, such as "SERVER1:/home", "-e 'ssh -p 22' SERVER1:/home", "--exclude=*-excluded-from-daisync SERVER:/home". is directly passed to rsync, thus it can be local, rsync:// or rsync over remote shell, including ssh and rsh. To backup gluster storage node, multiple '-s' are needed
 			SOURCES+=("$2")
 			shift 2 ;;
-		-d | --updatedb)	#generate locate database to find file quickly, needs updatedb
+		-d | --updatedb)	#generate locate database to find file very quickly. A sample command is 'locate -d DEST/0000/.daisync-locate.db myfile'
 			need_command updatedb
 			UPDATEDB=yes
 			shift 1 ;;

@@ -59,6 +59,12 @@ $ daisync -l 1 -s src/ dst
 $ stat dst/0001/1M dst/0000/1M-MOVED | grep Inode #It shows the same Inode
 ```
 
+7. create locate database to find file quickly
+```
+$ daisync -ds src/ dst
+$ locate -d dst/0000/.daisync-locate.db new | sed -e "s/.*\.daisync\///" #sed is added to only show the relative path under 'dst/0000'
+```
+
 ## Help
 ```
 $ daisync -h
