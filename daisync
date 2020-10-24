@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+#REVISION
+#	20201023 major code refactoring, getopts -> getopt, ditch autoconf, github-ized, etc.
+#	20191119 log in archived folder, always keep 0000 with -k
+#	20190409 date +%d -> date +%_d, %j -> %_j
+#	20190124 github release
+#	20190101 check 0000
+#	20181214 cp -aprl
+#	20181205
+#	20181204 archive mode modification; switch to git for version control
+#	4.0.3, Mar 23, 2018, .daisync-setting file location and .daisync-exclude-from
+#	4.0.2, Feb 23, 2017, archive option -a weekly/monthly/yearly
+#	4.0.1, Oct 27, 2014, fix a bug that non-daisync folder might crash daisync-plot
+#				change underline to dash for all command or temp files
+#	4.0.0, Aug 14, 2013, gluster support
+#	3.0.4, May 28, 2013, if .daisync exists, remove oldest folder instead of exception
+#	3.0.3, Apr 29, 2013, return 51,52,53 if modown is wrong
+#	3.0.1, Aug 30, 2012, remove all ACL before modown, and some minor changes
+#	3.0.0, May 01, 2012, Major updates, including daisync-locate to locate files much faster than 'find' option changes
+#	2.3.0, Jan 19, 2012, -i -> -m modown file is not used in default
+#	2.2,   Sep 30, 2011, minor modification on the plot and log
+#	2.0,   Jan 13, 2011, minor modification on the plot and log
+#	1.10,  Jul 27, 2010, performance improvement, command argument in log, split lock and log, temp file location, plot tool daisync-plot, etc.
+#	1.0,   Mar 14, 2009
+set -e
+trap "exit 1" TERM
+export TOP_PID=$$
+function helpme {
+	if [[ "$1" != "" ]]
+	then
+		echo -e "$1" 1>&2
+	else
+		cat /proc/$$/fd/255 | sed -n '/^#HELPME_START/,/^#HELPME_END/p' | grep -v "^#HELPME_" | grep -e "	-\|^#" | grep -- "$(echo $OPT_SHORT | sed -e "s/://g" | sed -e "s/\(.\)/\t-\1 \\\|/g" | sed -e "s/$/^#$COMMAND\t\\\|^#[A-Z]/" )" | sed -e "s/^#$COMMAND\t/\t/; s/^#//" 1>&2
+	fi
+	kill -s TERM $TOP_PID
+}
+function need_command {
+	which $1 &> /dev/null || helpme "ERR-008: missing command $1"
+}
+
+ARGLIST=$@
+OPT_SHORT="hvn:a:s:dl:r:k:"
+OPT_LONG="help,verbose,num-of-backups:,archive-interval:,source:,updatedb,link-moved-file:,removal-percentage:,keep:"
+OPTS=$(getopt -o $OPT_SHORT --long $OPT_LONG -n daisync -- "$@")
+NUM=100
+KEEP=2
+eval set -- "$OPTS"
+while :
+do
+	case "$1" in
+#HELPME_START
+#NAME
+#	rsync-based time-machine-backup
+#SYNOPSIS
+#	daisync [OPTION]... DEST
+#OPTIONS
+		-h | --help)
+			helpme ;;
+		-v | --verbose)
+			set -x
+			shift ;;
+		-n | --num-of-backups)	#=NUM, number of backups, default 100
+			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-001: invalid number: -c $2"
+			NUM=$2
+			shift 2 ;;
+		-a | --archive-interval)	#=weekly/monthly/yearly, interval of permanent archive
+			[ "$2" = "weekly" -o "$2" = "monthly" -o "$2" = "yearly" ] || helpme "ERR-002: invalid paramter: -a $2"
+			ARCHIVE=$2
+			shift 2 ;;
+		-s | --source)	#=SOURCE, such as "SERVER1:/home", "-e 'ssh -p 22' SERVER1:/home", "--exclude=*-excluded-from-daisync SERVER:/home". is directly passed to rsync, thus it can be local, rsync:// or rsync over remote shell, including ssh and rsh. To backup gluster storage node, multiple '-s' are needed
+			SOURCES+=("$2")
+			shift 2 ;;
+		-d | --updatedb)	#generate locate database to find file quickly, needs updatedb
+			need_command updatedb
+			UPDATEDB=yes
+			shift 1 ;;
+		-l | --link-moved-files)	#=SIZE, link moved files if its size is greater than SIZE megabytes. needs sha512sum
+			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-003: invalid number: -l $2"
+			need_command sha512sum
+			let LINK=$2 || helpme "ERR-004: -l must be followed by a positive interger"
+			shift 2 ;;
+		-r | --removal-percentage)	#=PERCENTAGE, old backups will be removed until usage of the DEST is below PERCENTAGE, or -k is specified
+			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-005: invalid number: -f $2"
+			REMOVE=$2
+			shift 2 ;;
+		-k | --keep) #=KEEP, keep KEEP of backups if -r is specified, default 2
+			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-006: invalid number: -k $2"
+			KEEP=$2
+			shift 2 ;;
+		--)
+			shift
+			break ;;
+		*)
+			break ;;
+#VERSION
+#	20201023
+#COPYRIGHT
+#	Developed by Manhong Dai, https://github.com/daimh/daisync
+#	Copyright © 2020 University of Michigan. License GPLv3+: GNU GPL version 3 or later.
+#	This is free software: you are free to change and redistribute it, while these copyright/history lines must stay untouched.
+#	There is NO WARRANTY, to the extent permitted by law.
+#HELPME_END
+	esac
+done
+
+
+for CMD in flock rsync fuser df
+do
+	need_command $CMD
+done
+[ ${#SOURCES[@]} -gt 0 ] || helpme "ERR-007: missing -s"
+[ $# -eq 1 ] || helpme "ERR-009: DEST must be specified"
+DEST=$1
+[ -d "$DEST" ] || helpme "ERR-010: DEST folder '$DEST' doesn't exist"
+[ -d "$DEST/0000" ] || helpme "ERR-011: '$DEST' is not a daisync directory. Or please run 'mkdir $DEST/0000' to initialize it"
+
+(
+if ! flock -n 77
+then
+	fuser "$DEST/.daisync-lock"
+	helpme "A previous daisync is still running, process id is above"
+fi
+echo "[$(date '+%F %H:%M:%S')]#daisync begin (daisync $ARGLIST)"
+if [ $NUM -gt 1 ]
+then
+	((LAST=NUM-1))
+	LAST=$(printf "%04d" $LAST)
+fi
+[ -d "$DEST/.daisync" ] || mkdir "$DEST/.daisync"
+rm -f "$DEST/.daisync/.daisync-df"
+if [ "$REMOVE" != "" ]
+then
+while :
+do
+	ps $$ &> /dev/null || break
+	((CUR_DFPCT=$(df -P "$DEST" | tail -n 1 |awk '{print $5}' | sed -e "s/%//") ))
+	if [[ $CUR_DFPCT -lt $REMOVE ]]
+	then
+		if [ -f "$DEST/.daisync/.daisync-df" ]
+		then
+			break
+		else
+			sleep 60
+			continue
+		fi
+	fi
+	(( CUR_BKNUM=$( (cd $DEST && ls -d ???? | grep -v 0000) | wc -l ) ))
+	[[ $CUR_BKNUM -lt $KEEP ]] && break
+	LAST=$( (cd $DEST && ls -d ???? | grep -v 0000) | sort -r | head -n 1 )
+	echo "[$(date '+%F %H:%M:%S')]#daisync removing $LAST"
+	rm -rf "$DEST/$LAST"
+done
+fi &
+
+mapfile -t SOURCES < <(shuf -e -- "${SOURCES[@]}")
+for SRC in "${SOURCES[@]}"
+do
+	PARAMS="-a --link-dest=../0000"
+	[ ${#SOURCES[@]} -eq 1 ] && PARAMS="$PARAMS --delete"
+	[ -f "$DEST/.daisync-exclude-from" ] && PARAMS="$PARAMS --exclude-from=$DEST/.daisync-exclude-from"
+	echo "[$(date '+%F %H:%M:%S')]#rsync $PARAMS \"$SRC\" \"$DEST/.daisync\""
+	bash -c "rsync $PARAMS $SRC \"$DEST/.daisync\""
+	RSYNC_RTN=$?
+	[ $RSYNC_RTN -eq 0 -o $RSYNC_RTN -eq 23 -o $RSYNC_RTN  -eq 24 ] || helpme "ERR-012: rsync '$SRC' failed with code $RSYNC_RTN"
+done
+if [ "$LINK" != "" ]
+then
+	echo "[$(date '+%F %H:%M:%S')]#relinking moved files that is greater than $LINK MB"
+	find "$DEST/.daisync" -type f -size +${LINK}M -links 1 -print0 | while read -d $'\0' FNEW
+	do
+		HASH=$(sha512sum "$FNEW" |cut -c 1-128)
+		read STATU STATG STATS STATY  < <(stat -c "%u %g %s %Y" "$FNEW")
+		find "$DEST/0000" -type f -uid $STATU -gid $STATG -size ${STATS}c -exec bash -c "
+			if [ \"$HASH\" = \"\$(sha512sum \"{}\" |cut -c 1-128)\" -a \"\$(stat -c %Y \"{}\")\" = \"$STATY\" ]
+			then
+				echo \"linking: '{}'\" \"to\" \"'$FNEW'\"
+				ln -f \"{}\" '$FNEW'
+			else
+				exit 1
+			fi" \;  -quit
+	done
+fi
+if [ "$UPDATEDB" = "yes" ]
+then
+	echo "[$(date '+%F %H:%M:%S')]#create locate database"
+	updatedb -l no -o "$DEST/.daisync/.daisync-locate.db" -U "$(realpath "$DEST/.daisync")"
+	chmod 400 "$DEST/.daisync/.daisync-locate.db"
+fi
+df -Pm "$DEST" > "$DEST/.daisync/.daisync-df"
+wait
+((NUM--))
+for IDX in $(seq -f %04g $NUM -1 0)
+do
+	if [ -d "$DEST/$IDX" ]
+	then
+		if [ "$IDX" = "$(printf "%04d" $NUM)" ]
+		then
+			rm -rf "$DEST/$IDX"
+		else
+			mv "$DEST/$IDX" "$DEST/$PREV"
+		fi
+	fi
+	PREV=$IDX
+done
+mv "$DEST/.daisync" "$DEST/0000"
+
+if [ "$ARCHIVE" != "" ]
+then
+	(( NOW=$(date +%s) ))
+	if [ "$ARCHIVE" = "weekly" ]
+	then
+		(( OFFSET=$(date --date="@$NOW" +%w) ))
+		(( START=$NOW - $OFFSET * 3600 * 24 ))
+	elif [ "$ARCHIVE" = "monthly" ]
+	then
+		(( OFFSET=$(date --date="@$NOW" +%_d) ))
+		(( OFFSET-- ))
+		(( START=$NOW - $OFFSET * 3600 * 24 ))
+	elif [ "$ARCHIVE" = "yearly" ]
+	then
+		(( OFFSET=$(date --date="@$NOW" +%_j) ))
+		(( OFFSET-- ))
+		(( START=$NOW - $OFFSET * 3600 * 24 ))
+	fi
+	HAS_ARCHIVE=NO
+	for ((DT=$START; DT<=$NOW; DT+=3600 * 24))
+	do
+		DAY=$(date --date="@$DT" +%F)
+		if ls "$DEST"/$DAY-??-??-?? &> /dev/null
+		then
+			HAS_ARCHIVE=YES
+			break
+		fi
+	done
+	if [ "$HAS_ARCHIVE" = "NO" ]
+	then
+		NOW=$(date --date="@$NOW" +%F-%H-%M-%S)
+		echo $NOW > "$DEST/0000/.daisync-archived"
+		cp -aprl "$DEST/0000" "$DEST/$NOW"
+	fi
+fi
+echo "[$(date '+%F %H:%M:%S')]#daisync end"
+)  77> "$DEST/.daisync-lock" 2>&1 | tee "$DEST/.daisync-log.$$"
+mv "$DEST/.daisync-log.$$" "$DEST/0000/.daisync-log"
