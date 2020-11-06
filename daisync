@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #REVISION
+#	20210305 pgid
+#	20201106 helpme sends signal to a process group
 #	20201023 major code refactoring, getopts -> getopt, ditch autoconf, github-ized, etc.
 #	20191119 log in archived folder, always keep 0000 with -k
 #	20190409 date +%d -> date +%_d, %j -> %_j
@@ -24,7 +26,7 @@
 #	1.0,   Mar 14, 2009
 set -e
 trap "exit 1" TERM
-export TOP_PID=$$
+export TOP_PGID=$(ps --no-headers -o pgid $$ | tr -d ' ')
 function helpme {
 	if [[ "$1" != "" ]]
 	then
@@ -32,7 +34,7 @@ function helpme {
 	else
 		cat /proc/$$/fd/255 | sed -n '/^#HELPME_START/,/^#HELPME_END/p' | grep -v "^#HELPME_" | grep -e "	-\|^#" | grep -- "$(echo $OPT_SHORT | sed -e "s/://g" | sed -e "s/\(.\)/\t-\1 \\\|/g" | sed -e "s/$/^#$COMMAND\t\\\|^#[A-Z]/" )" | sed -e "s/^#$COMMAND\t/\t/; s/^#//" 1>&2
 	fi
-	kill -s TERM $TOP_PID
+	kill -s TERM -- -$TOP_PGID
 }
 function need_command {
 	which $1 &> /dev/null || helpme "ERR-008: missing command $1"
@@ -93,7 +95,7 @@ do
 		*)
 			break ;;
 #VERSION
-#	20201023
+#	20201106
 #COPYRIGHT
 #	Developed by Manhong Dai, https://github.com/daimh/daisync
 #	Copyright © 2020 University of Michigan. License GPLv3+: GNU GPL version 3 or later.
@@ -159,9 +161,11 @@ do
 	[ ${#SOURCES[@]} -eq 1 ] && PARAMS="$PARAMS --delete"
 	[ -f "$DEST/.daisync-exclude-from" ] && PARAMS="$PARAMS --exclude-from=$DEST/.daisync-exclude-from"
 	echo "[$(date '+%F %H:%M:%S')]#rsync $PARAMS \"$SRC\" \"$DEST/.daisync\""
+	set +e
 	bash -c "rsync $PARAMS $SRC \"$DEST/.daisync\""
 	RSYNC_RTN=$?
 	[ $RSYNC_RTN -eq 0 -o $RSYNC_RTN -eq 23 -o $RSYNC_RTN  -eq 24 ] || helpme "ERR-012: rsync '$SRC' failed with code $RSYNC_RTN"
+	set -e
 done
 if [ "$LINK" != "" ]
 then
