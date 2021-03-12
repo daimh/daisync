@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #REVISION
+#	20210312 saves .daisync-log in archive
 #	20210305 pgid
 #	20201106 helpme sends signal to a process group
 #	20201023 major code refactoring, getopts -> getopt, ditch autoconf, github-ized, etc.
@@ -247,3 +248,7 @@ fi
 echo "[$(date '+%F %H:%M:%S')]#daisync end"
 )  77> "$DEST/.daisync-lock" 2>&1 | tee "$DEST/.daisync-log.$$"
 mv "$DEST/.daisync-log.$$" "$DEST/0000/.daisync-log"
+if [ -f "$DEST/0000/.daisync-archived" ]
+then
+	ln "$DEST/0000/.daisync-log" "$DEST/$(cat "$DEST/0000/.daisync-archived")/"
+fi
