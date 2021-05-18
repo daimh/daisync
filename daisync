@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #REVISION
+#	20210518 -r, -k code refactoring
 #	20210312 saves .daisync-log in archive
 #	20210305 pgid
 #	20201106 helpme sends signal to a process group
@@ -42,11 +43,10 @@ function need_command {
 }
 
 ARGLIST=$@
-OPT_SHORT="hvn:a:s:dl:r:k:"
-OPT_LONG="help,verbose,num-of-backups:,archive-interval:,source:,updatedb,link-moved-file:,removal-percentage:,keep:"
+OPT_SHORT="hvn:a:s:r:k:dl:"
+OPT_LONG="help,verbose,num-of-backups:,archive-interval:,source:,removal-percentage:,keep:,updatedb,link-moved-file:"
 OPTS=$(getopt -o $OPT_SHORT --long $OPT_LONG -n daisync -- "$@")
 NUM=10
-KEEP=2
 eval set -- "$OPTS"
 while :
 do
@@ -62,33 +62,33 @@ do
 		-v | --verbose)
 			set -x
 			shift ;;
-		-n | --num-of-backups)	#=NUM, maximum number of backups, default 10
+		-n | --num-of-backups)	#NUM, maximum number of transient backups, default 10
 			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-001: invalid number: -c $2"
 			NUM=$2
 			shift 2 ;;
-		-a | --archive-interval)	#=weekly/monthly/yearly, interval of permanent archive
+		-a | --archive-interval)	#weekly/monthly/yearly, interval of permanent backups
 			[ "$2" = "weekly" -o "$2" = "monthly" -o "$2" = "yearly" ] || helpme "ERR-002: invalid paramter: -a $2"
 			ARCHIVE=$2
 			shift 2 ;;
-		-s | --source)	#=SOURCE, such as "SERVER1:/home", "-e 'ssh -p 22' SERVER1:/home", "--exclude=*-excluded-from-daisync SERVER:/home". is directly passed to rsync, thus it can be local, rsync:// or rsync over remote shell, including ssh and rsh. To backup gluster storage node, multiple '-s' are needed
+		-s | --source)	#SOURCE, such as "SERVER1:/home", "-e 'ssh -p 22' SERVER1:/home", "--exclude=*-excluded-from-daisync SERVER:/home". SOURCE is directly passed to rsync, thus it can be local, rsync:// or rsync over remote shell, including ssh and rsh. Multiple '-s' are supported, to backup some setup such as gluster storage nodes. 
 			SOURCES+=("$2")
+			shift 2 ;;
+		-r | --removal-percentage)	#PERCENTAGE, keep removing the oldest backup until the DEST storage usage is below PERCENTAGE or there are only KEEP of backups left, see '-k' below..
+			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-005: invalid number: -f $2"
+			REMOVE=$2
+			shift 2 ;;
+		-k | --keep) #KEEP, always keep KEEP of latest transient backups, if -r is specified
+			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-006: invalid number: -k $2"
+			KEEP=$2
 			shift 2 ;;
 		-d | --updatedb)	#generate locate database to find file very quickly. A sample command is 'locate -d DEST/0000/.daisync-locate.db myfile'
 			need_command updatedb
 			UPDATEDB=yes
 			shift 1 ;;
-		-l | --link-moved-files)	#=SIZE, link moved files if its size is greater than SIZE megabytes. needs sha512sum
+		-l | --link-moved-files)	#SIZE, link moved files if its size is greater than SIZE megabytes. needs sha512sum
 			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-003: invalid number: -l $2"
 			need_command sha512sum
 			let LINK=$2 || helpme "ERR-004: -l must be followed by a positive interger"
-			shift 2 ;;
-		-r | --removal-percentage)	#=PERCENTAGE, old backups will be removed until usage of the DEST is below PERCENTAGE, or -k is specified
-			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-005: invalid number: -f $2"
-			REMOVE=$2
-			shift 2 ;;
-		-k | --keep) #=KEEP, keep KEEP of backups if -r is specified, default 2
-			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-006: invalid number: -k $2"
-			KEEP=$2
 			shift 2 ;;
 		--)
 			shift
@@ -96,11 +96,11 @@ do
 		*)
 			break ;;
 #VERSION
-#	20201106
+#	20210518
 #COPYRIGHT
 #	Developed by Manhong Dai, https://github.com/daimh/daisync
-#	Copyright © 2020 University of Michigan. License GPLv3+: GNU GPL version 3 or later.
-#	This is free software: you are free to change and redistribute it, while these copyright/history lines must stay untouched.
+#	Copyright © 2021 University of Michigan. License GPLv3+: GNU GPL version 3 or later.
+#	This is free software: you are free to change and redistribute it.
 #	There is NO WARRANTY, to the extent permitted by law.
 #HELPME_END
 	esac
@@ -116,6 +116,8 @@ done
 DEST=$1
 [ -d "$DEST" ] || helpme "ERR-010: DEST folder '$DEST' doesn't exist"
 [ -d "$DEST/0000" ] || helpme "ERR-011: '$DEST' is not a daisync directory. Or please run 'mkdir $DEST/0000' to explicitly initialize it"
+[ -z "$REMOVE" -a -n "$KEEP"  ] && helpme "ERR-013: -r is missing as -k is specified"
+[ -n "$REMOVE" -a -z "$KEEP"  ] && helpme "ERR-014: -k is missing as -r is specified"
 
 (
 if ! flock -n 77
@@ -133,26 +135,32 @@ fi
 rm -f "$DEST/.daisync/.daisync-df"
 if [ "$REMOVE" != "" ]
 then
-while :
-do
-	ps $$ &> /dev/null || break
-	((CUR_DFPCT=$(df -P "$DEST" | tail -n 1 |awk '{print $5}' | sed -e "s/%//") ))
-	if [[ $CUR_DFPCT -lt $REMOVE ]]
-	then
-		if [ -f "$DEST/.daisync/.daisync-df" ]
+	for ((SLEEP=1; ;SLEEP++))
+	do
+		ps $$ &> /dev/null || break
+		((CUR_DFPCT=$(df -P "$DEST" | tail -n 1 |awk '{print $5}' | sed -e "s/%//") ))
+		if [ $CUR_DFPCT -ge $REMOVE ]
+		then
+			(( CUR_BKNUM=$( (cd $DEST && ls -d ???? .daisync 2>/dev/null ) | wc -l ) ))
+			[[ $CUR_BKNUM -le $KEEP ]] && break
+			LAST=$( (cd $DEST && ls -d ???? | grep -v 0000) | sort -r | head -n 1 )
+			if [ -n "$LAST" ]
+			then
+				echo "[$(date '+%F %H:%M:%S')]#daisync removing $LAST"
+				rm -rf "$DEST/$LAST" 
+				continue
+			fi
+		elif [ ! -d "$DEST/.daisync" ]
 		then
 			break
-		else
-			sleep 60
-			continue
 		fi
-	fi
-	(( CUR_BKNUM=$( (cd $DEST && ls -d ???? | grep -v 0000) | wc -l ) ))
-	[[ $CUR_BKNUM -lt $KEEP ]] && break
-	LAST=$( (cd $DEST && ls -d ???? | grep -v 0000) | sort -r | head -n 1 )
-	echo "[$(date '+%F %H:%M:%S')]#daisync removing $LAST"
-	rm -rf "$DEST/$LAST"
-done
+		if [ $SLEEP -gt 60 ] 
+		then
+			sleep 60
+		else
+			sleep $SLEEP
+		fi
+	done
 fi &
 
 mapfile -t SOURCES < <(shuf -e -- "${SOURCES[@]}")
@@ -192,7 +200,6 @@ then
 	chmod 400 "$DEST/.daisync/.daisync-locate.db"
 fi
 df -Pm "$DEST" > "$DEST/.daisync/.daisync-df"
-wait
 ((NUM--))
 for IDX in $(seq -f %04g $NUM -1 0)
 do
@@ -208,6 +215,7 @@ do
 	PREV=$IDX
 done
 mv "$DEST/.daisync" "$DEST/0000"
+wait
 
 if [ "$ARCHIVE" != "" ]
 then
