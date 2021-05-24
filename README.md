@@ -90,6 +90,8 @@ Ruth Freedman, MPH, former administrator of MNI, UMICH
 
 Fan Meng, Ph.D., Research Associate Professor, Psychiatry, UMICH
 
+Brock Palen, Director, Advanced Research Computing, UMICH
+
 Huda Akil, Ph.D., Director of MNI, UMICH
 
 Stanley J. Watson, M.D., Ph.D., Director of MNI, UMICH

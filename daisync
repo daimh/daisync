@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #REVISION
+#	20210524 -I, to backup to the filesystem that doesn't support hard link
 #	20210518 -r, -k code refactoring
 #	20210312 saves .daisync-log in archive
 #	20210305 pgid
@@ -43,8 +44,8 @@ function need_command {
 }
 
 ARGLIST=$@
-OPT_SHORT="hvn:a:s:r:k:dl:"
-OPT_LONG="help,verbose,num-of-backups:,archive-interval:,source:,removal-percentage:,keep:,updatedb,link-moved-file:"
+OPT_SHORT="hvn:Ia:s:r:k:dl:"
+OPT_LONG="help,verbose,num-of-backups:incremental-only,archive-interval:,source:,removal-percentage:,keep:,updatedb,link-moved-file:"
 OPTS=$(getopt -o $OPT_SHORT --long $OPT_LONG -n daisync -- "$@")
 NUM=10
 eval set -- "$OPTS"
@@ -66,6 +67,9 @@ do
 			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-001: invalid number: -c $2"
 			NUM=$2
 			shift 2 ;;
+		-I | --incremental-only)	#unchanged files are in 0000 only, won't be hard linked to 0001-9999
+			INCREMENTAL=YES
+			shift ;;
 		-a | --archive-interval)	#weekly/monthly/yearly, interval of permanent backups
 			[ "$2" = "weekly" -o "$2" = "monthly" -o "$2" = "yearly" ] || helpme "ERR-002: invalid paramter: -a $2"
 			ARCHIVE=$2
@@ -96,7 +100,7 @@ do
 		*)
 			break ;;
 #VERSION
-#	20210518
+#	20210524
 #COPYRIGHT
 #	Developed by Manhong Dai, https://github.com/daimh/daisync
 #	Copyright © 2021 University of Michigan. License GPLv3+: GNU GPL version 3 or later.
@@ -118,6 +122,7 @@ DEST=$1
 [ -d "$DEST/0000" ] || helpme "ERR-011: '$DEST' is not a daisync directory. Or please run 'mkdir $DEST/0000' to explicitly initialize it"
 [ -z "$REMOVE" -a -n "$KEEP"  ] && helpme "ERR-013: -r is missing as -k is specified"
 [ -n "$REMOVE" -a -z "$KEEP"  ] && helpme "ERR-014: -k is missing as -r is specified"
+[ ${#SOURCES[@]} -eq 1 -o "$INCREMENTAL" != "YES" ] || helpme "ERR-015: multiple -s cannot work with -I"
 
 (
 if ! flock -n 77
@@ -131,7 +136,17 @@ then
 	((LAST=NUM-1))
 	LAST=$(printf "%04d" $LAST)
 fi
-[ -d "$DEST/.daisync" ] || mkdir "$DEST/.daisync"
+if [ ! -d "$DEST/.daisync" ] 
+then
+	if [ "$INCREMENTAL" != "YES" -o ! -d "$DEST/0000" ]
+	then
+		mkdir "$DEST/.daisync"
+	else
+		mv "$DEST/0000" "$DEST/.daisync"
+		mkdir "$DEST/0000"
+		mv "$DEST/.daisync/.daisync-*" "$DEST/0000/" 2> /dev/null || :
+	fi
+fi
 rm -f "$DEST/.daisync/.daisync-df"
 if [ "$REMOVE" != "" ]
 then
@@ -166,7 +181,12 @@ fi &
 mapfile -t SOURCES < <(shuf -e -- "${SOURCES[@]}")
 for SRC in "${SOURCES[@]}"
 do
-	PARAMS="-a --link-dest=../0000"
+	if [ "$INCREMENTAL" = "YES" ]
+	then
+		PARAMS="-ab --backup-dir=../0000"
+	else
+		PARAMS="-a --link-dest=../0000"
+	fi
 	[ ${#SOURCES[@]} -eq 1 ] && PARAMS="$PARAMS --delete"
 	[ -f "$DEST/.daisync-exclude-from" ] && PARAMS="$PARAMS --exclude-from=$DEST/.daisync-exclude-from"
 	echo "[$(date '+%F %H:%M:%S')]#rsync $PARAMS \"$SRC\" \"$DEST/.daisync\""
@@ -250,7 +270,12 @@ then
 		NOW=$(date --date="@$NOW" +%F-%H-%M-%S)
 		echo "[$(date '+%F %H:%M:%S')]#creating $ARCHIVE archive"
 		echo $NOW > "$DEST/0000/.daisync-archived"
-		cp -aprl "$DEST/0000" "$DEST/$NOW"
+		if [ "$INCREMENTAL" = "YES" ]
+		then
+			cp -apr "$DEST/0000" "$DEST/$NOW"
+		else
+			cp -aprl "$DEST/0000" "$DEST/$NOW"
+		fi
 	fi
 fi
 echo "[$(date '+%F %H:%M:%S')]#daisync end"
