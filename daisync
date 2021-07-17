@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 #REVISION
 #	20210524 -I, to backup to the filesystem that doesn't support hard link
 #	20210518 -r, -k code refactoring
@@ -100,7 +100,7 @@ do
 		*)
 			break ;;
 #VERSION
-#	20210524
+#	20210717
 #COPYRIGHT
 #	Developed by Manhong Dai, https://github.com/daimh/daisync
 #	Copyright © 2021 University of Michigan. License GPLv3+: GNU GPL version 3 or later.
@@ -120,8 +120,8 @@ done
 DEST=$1
 [ -d "$DEST" ] || helpme "ERR-010: DEST folder '$DEST' doesn't exist"
 [ -d "$DEST/0000" ] || helpme "ERR-011: '$DEST' is not a daisync directory. Or please run 'mkdir $DEST/0000' to explicitly initialize it"
-[ -z "$REMOVE" -a -n "$KEEP"  ] && helpme "ERR-013: -r is missing as -k is specified"
-[ -n "$REMOVE" -a -z "$KEEP"  ] && helpme "ERR-014: -k is missing as -r is specified"
+[ -z "$REMOVE" -a -n "$KEEP" ] && helpme "ERR-013: -r is missing as -k is specified"
+[ -n "$REMOVE" -a -z "$KEEP" ] && helpme "ERR-014: -k is missing as -r is specified"
 [ ${#SOURCES[@]} -eq 1 -o "$INCREMENTAL" != "YES" ] || helpme "ERR-015: multiple -s cannot work with -I"
 
 (
@@ -193,7 +193,7 @@ do
 	set +e
 	bash -c "rsync $PARAMS $SRC \"$DEST/.daisync\""
 	RSYNC_RTN=$?
-	[ $RSYNC_RTN -eq 0 -o $RSYNC_RTN -eq 23 -o $RSYNC_RTN  -eq 24 ] || helpme "ERR-012: rsync '$SRC' failed with code $RSYNC_RTN"
+	[ $RSYNC_RTN -eq 0 -o $RSYNC_RTN -eq 24 ] || helpme "ERR-012: rsync '$SRC' failed with code $RSYNC_RTN"
 	set -e
 done
 if [ "$LINK" != "" ]
@@ -202,7 +202,7 @@ then
 	find "$DEST/.daisync" -type f -size +${LINK}M -links 1 -print0 | while read -d $'\0' FNEW
 	do
 		HASH=$(sha512sum "$FNEW" |cut -c 1-128)
-		read STATU STATG STATS STATY  < <(stat -c "%u %g %s %Y" "$FNEW")
+		read STATU STATG STATS STATY < <(stat -c "%u %g %s %Y" "$FNEW")
 		find "$DEST/0000" -type f -uid $STATU -gid $STATG -size ${STATS}c -exec bash -c "
 			if [ \"$HASH\" = \"\$(sha512sum \"{}\" |cut -c 1-128)\" -a \"\$(stat -c %Y \"{}\")\" = \"$STATY\" ]
 			then
@@ -210,7 +210,7 @@ then
 				ln -f \"{}\" '$FNEW'
 			else
 				exit 1
-			fi" \;  -quit
+			fi" \; -quit
 	done
 fi
 if [ "$UPDATEDB" = "yes" ]
@@ -279,7 +279,7 @@ then
 	fi
 fi
 echo "[$(date '+%F %H:%M:%S')]#daisync end"
-)  77> "$DEST/.daisync-lock" 2>&1 | tee "$DEST/.daisync-log.$$"
+) 77> "$DEST/.daisync-lock" 2>&1 | tee "$DEST/.daisync-log.$$"
 mv "$DEST/.daisync-log.$$" "$DEST/0000/.daisync-log"
 if [ -f "$DEST/0000/.daisync-archived" ]
 then
