@@ -1,39 +1,49 @@
-#!/usr/bin/bash
-#version history is now in git
-set -e
+#!/usr/bin/env bash
+set -eu
+set -o pipefail
 trap "exit 1" TERM
-export TOP_PGID=$(ps --no-headers -o pgid $$ | tr -d ' ')
 function helpme {
-	if [[ "$1" != "" ]]
+	if [ $# -gt 0 ]
 	then
 		echo -e "$1" 1>&2
 	else
-		cat /proc/$$/fd/255 | sed -n '/^#HELPME_START/,/^#HELPME_END/p' | grep -v "^#HELPME_" | grep -e "	-\|^#" | grep -- "$(echo $OPT_SHORT | sed -e "s/://g" | sed -e "s/\(.\)/\t-\1 \\\|/g" | sed -e "s/$/^#$COMMAND\t\\\|^#[A-Z]/" )" | sed -e "s/^#$COMMAND\t/\t/; s/^#//" 1>&2
+		grep '#' /proc/$$/fd/255 | sed -n '/^#HELPME_START/,/^#HELPME_END/p' | grep -v "^#HELPME_" | sed -e "s/#//" | tr -s '\t' 1>&2 #20220313
 	fi
-	kill -s TERM -- -$TOP_PGID
+	PGID=$(cut -d ' ' -f 5 /proc/$$/stat)
+	kill -s TERM -- -$PGID
 }
-function need_command {
-	which $1 &> /dev/null || helpme "ERR-008: missing command $1"
+function hash_command {
+	hash $1 &> /dev/null || helpme "ERR-008: missing command $1"
 }
-
+ARCHIVE=""
+INCREMENTAL=NO
+KEEP=""
+LINK=""
+NUM=10
+REMOVE=""
+UPDATEDB=NO
 ARGLIST=$@
 OPT_SHORT="hvn:Ia:s:r:k:dl:"
-OPT_LONG="help,verbose,num-of-backups:incremental-only,archive-interval:,source:,removal-percentage:,keep:,updatedb,link-moved-file:"
+OPT_LONG="help,version,num-of-backups:incremental-only,archive-interval:,source:,removal-percentage:,keep:,updatedb,link-moved-file:"
 OPTS=$(getopt -o $OPT_SHORT --long $OPT_LONG -n daisync -- "$@")
-NUM=10
 eval set -- "$OPTS"
-while :
+while [ $# -gt 0 ]
 do
 	case "$1" in
 #HELPME_START
 #NAME
 #	daisync, an rsync-based time-machine-backup tool
+#EXAMPLE
+#	mkdir -p backup/0000; daisync -s someone@localhost:dir1/ backup
+#	mkdir -p backup/0000; daisync -s someone@localhost:"dir1\ dir2" backup
 #SYNOPSIS
 #	daisync [OPTION]... DEST
-#OPTIONS
-		-h | --help)
+#DESCRIPTION
+		-h | --help) #print help information
 			helpme ;;
-		-v | --verbose)
+		--version) #print version information
+			helpme "20220313" ;;
+		-v )	#verbose output
 			set -x
 			shift ;;
 		-n | --num-of-backups)	#NUM, maximum number of transient backups, default 10
@@ -59,12 +69,12 @@ do
 			KEEP=$2
 			shift 2 ;;
 		-d | --updatedb)	#generate locate database to find file very quickly. A sample command is 'locate -d DEST/0000/.daisync-locate.db myfile'
-			need_command updatedb
-			UPDATEDB=yes
+			hash_command updatedb
+			UPDATEDB=YES
 			shift 1 ;;
 		-l | --link-moved-files)	#SIZE, link moved files if its size is greater than SIZE megabytes. needs sha512sum
 			[ "$2" -eq "$2" ] 2> /dev/null || helpme "ERR-003: invalid number: -l $2"
-			need_command sha512sum
+			hash_command sha512sum
 			let LINK=$2 || helpme "ERR-004: -l must be followed by a positive interger"
 			shift 2 ;;
 		--)
@@ -72,35 +82,33 @@ do
 			break ;;
 		*)
 			break ;;
-#VERSION
-#	20210724
+#AUTHOR
+#	Manhong Dai, MNI, U of Michigan
 #COPYRIGHT
-#	Developed by Manhong Dai, https://github.com/daimh/daisync
-#	Copyright © 2021 University of Michigan. License GPLv3+: GNU GPL version 3 or later.
+#	Copyright © 2002-2022 University of Michigan. License GPLv3+: GNU
+#	GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
 #	This is free software: you are free to change and redistribute it.
 #	There is NO WARRANTY, to the extent permitted by law.
 #HELPME_END
 	esac
 done
 
-
 for CMD in flock rsync fuser df
 do
-	need_command $CMD
+	hash_command $CMD
 done
 [ ${#SOURCES[@]} -gt 0 ] || helpme "ERR-007: missing -s"
 [ $# -eq 1 ] || helpme "ERR-009: DEST must be specified"
 DEST=$1
 [ -d "$DEST" ] || helpme "ERR-010: DEST folder '$DEST' doesn't exist"
 [ -d "$DEST/0000" ] || helpme "ERR-011: '$DEST' is not a daisync directory. Or please run 'mkdir $DEST/0000' to explicitly initialize it"
-[ -z "$REMOVE" -a -n "$KEEP" ] && helpme "ERR-013: -r is missing as -k is specified"
-[ -n "$REMOVE" -a -z "$KEEP" ] && helpme "ERR-014: -k is missing as -r is specified"
-[ ${#SOURCES[@]} -eq 1 -o "$INCREMENTAL" != "YES" ] || helpme "ERR-015: multiple -s cannot work with -I"
+[ -z "$REMOVE" -a -z "$KEEP" ] || [ -n "$REMOVE" -a -n "$KEEP" ] || helpme "ERR-013: -k is missing as -r is specified"
+[ ${#SOURCES[@]} -eq 1 -o "$INCREMENTAL" != "YES" ] || helpme "ERR-014: multiple -s cannot work with -I"
 (
 	if ! flock -n 77
 	then
 		fuser "$DEST/.daisync-lock"
-		helpme "ERR-016: a previous daisync is still running, process id is above"
+		helpme "ERR-015: a daisync is still running, process id is above"
 	fi
 	echo "[$(date '+%F %H:%M:%S')]#daisync begin (daisync $ARGLIST)"
 	if [ $NUM -gt 1 ]
@@ -184,7 +192,7 @@ DEST=$1
 				fi" \; -quit
 		done
 	fi
-	if [ "$UPDATEDB" = "yes" ]
+	if [ "$UPDATEDB" = "YES" ]
 	then
 		echo "[$(date '+%F %H:%M:%S')]#create locate database"
 		updatedb -l no -o "$DEST/.daisync/.daisync-locate.db" -U "$(realpath "$DEST/.daisync")"

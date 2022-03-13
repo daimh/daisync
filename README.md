@@ -78,7 +78,7 @@ Contributions are always welcome!
 
 Developed by [Manhong Dai](mailto:daimh@umich.edu)
 
-Copyright © 2021 University of Michigan. License [GPLv3+](https://gnu.org/licenses/gpl.html): GNU GPL version 3 or later 
+Copyright © 2002-2021 University of Michigan. License [GPLv3+](https://gnu.org/licenses/gpl.html): GNU GPL version 3 or later 
 
 This is free software: you are free to change and redistribute it.
 
