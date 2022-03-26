@@ -1,4 +1,7 @@
-# daisync, rsync-based time-machine-backup
+# daisync, a modifiable-time-machine backup tool
+daisync is a time-machine backup tool. MNI, U of michigan has been using it for decades to backup petabytes of files every night with time machine. End users can go to one of many daily backups to retrieve files on their own.
+
+Now with the new feature '-c reflink' enabled in March 2022, the time-machine backups are modifiable. It means any of the time-machine backups can be modified, while the modification on one backup won't affect any other time-machine backups.
 
 ## Installation
 ```
@@ -7,7 +10,7 @@ chmod +x daisync
 mv daisync ~/bin/ # or any directory in your PATH
 ```
 
-## Test steps
+## Try it
 
 1. prepare a directory for tests
 ```
@@ -78,7 +81,7 @@ Contributions are always welcome!
 
 Developed by [Manhong Dai](mailto:daimh@umich.edu)
 
-Copyright © 2002-2021 University of Michigan. License [GPLv3+](https://gnu.org/licenses/gpl.html): GNU GPL version 3 or later 
+Copyright © 2002-2022 University of Michigan. License [GPLv3+](https://gnu.org/licenses/gpl.html): GNU GPL version 3 or later 
 
 This is free software: you are free to change and redistribute it.
 
