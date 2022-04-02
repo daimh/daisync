@@ -18,13 +18,12 @@ function hash_command {
 ARCHIVE=""
 CLONESTYLE=hardlink
 KEEP=""
-LINK=""
 NUM=10
 REMOVE=""
 UPDATEDB=NO
 ARGLIST=$@
-OPT_SHORT="hvn:c:a:s:r:k:dl:"
-OPT_LONG="help,version,num-of-backups:clone-style:,archive-interval:,source:,removal-percentage:,keep:,updatedb,link-moved-file:"
+OPT_SHORT="hvn:c:a:s:r:k:d"
+OPT_LONG="help,version,num-of-backups:clone-style:,archive:,source:,removal-percentage:,keep:,updatedb"
 OPTS=$(getopt -o $OPT_SHORT --long $OPT_LONG -n daisync -- "$@")
 eval set -- "$OPTS"
 while [ $# -gt 0 ]
@@ -42,7 +41,7 @@ do
 		-h | --help) #print help information
 			helpme ;;
 		--version) #print version information
-			helpme "20220326" ;;
+			helpme "20220402" ;;
 		-v )	#verbose output
 			set -x
 			shift ;;
@@ -53,7 +52,7 @@ do
 			CLONESTYLE=$2
 			[ "$CLONESTYLE" = "hardlink" -o "$CLONESTYLE" = "reflink" -o "$CLONESTYLE" = "none" ] || helpme "ERR-016: invalid parameter for -c: $2"
 			shift 2 ;;
-		-a | --archive-interval)	#weekly/monthly/yearly, interval of permanent backups
+		-a | --archive)	#weekly/monthly/yearly, interval of permanent backups
 			[ "$2" = "weekly" -o "$2" = "monthly" -o "$2" = "yearly" ] || helpme "ERR-002: invalid paramter: -a $2"
 			ARCHIVE=$2
 			shift 2 ;;
@@ -70,10 +69,6 @@ do
 			hash_command updatedb
 			UPDATEDB=YES
 			shift 1 ;;
-		-l | --link-moved-files)	#SIZE, link moved files if its size is greater than SIZE megabytes. needs sha512sum
-			hash_command sha512sum || helpme "ERR-003: invalid number for -l: $2"
-			let LINK=$2 || helpme "ERR-004: -l must be followed by a positive interger"
-			shift 2 ;;
 		--)
 			shift
 			break ;;
@@ -125,16 +120,19 @@ DEST=$1
 		elif [ "$CLONESTYLE" = "hardlink" ]
 		then
 			mkdir "$DEST/.daisync"
-		else
+		elif [ "$CLONESTYLE" = "reflink" ]
+		then
 			touch -a "$DEST/0000/.daisync-log"
-			mkdir "$DEST/.daisync"
-			if ! cp -pr --reflink=always "$DEST/0000/.daisync-log" "$DEST/.daisync"
+			mkdir -p "$DEST/.daisync-reflink"
+			if ! cp -a --reflink=always "$DEST/0000/.daisync-log" "$DEST/.daisync-reflink"
 			then
-				rm -r "$DEST/.daisync"
-				helpme "ERR-017: \"$DEST\" doesn't support reflink. Try the latest version of xfs, btrfs, cifs, etc."
+				rm -r "$DEST/.daisync-reflink"
+				helpme "ERR-017: \"$DEST\" doesn't support reflink. Try the latest version of xfs, btrfs, cifs, nfs 4.2, etc."
 			fi
-			rm -r "$DEST/.daisync"
-			cp -pr --reflink=always "$DEST/0000/" "$DEST/.daisync"
+			cp -au --reflink=always "$DEST/0000/." "$DEST/.daisync-reflink"
+			mv "$DEST/.daisync-reflink" "$DEST/.daisync"
+		else
+			helpme "ERR-019"
 		fi
 	fi
 	rm -f "$DEST/.daisync/.daisync-df"
@@ -188,23 +186,6 @@ DEST=$1
 		set -e
 		[ $RSYNC_RTN -eq 0 -o $RSYNC_RTN -eq 24 ] || helpme "ERR-012: rsync '$SRC' failed with code $RSYNC_RTN"
 	done
-	if [ "$LINK" != "" ]
-	then
-		echo "[$(date '+%F %H:%M:%S')]#relinking moved files that is greater than $LINK MB"
-		find "$DEST/.daisync" -type f -size +${LINK}M -links 1 -print0 | while read -d $'\0' FNEW
-		do
-			HASH=$(sha512sum "$FNEW" |cut -c 1-128)
-			read STATU STATG STATS STATY < <(stat -c "%u %g %s %Y" "$FNEW")
-			find "$DEST/0000" -type f -uid $STATU -gid $STATG -size ${STATS}c -exec bash -c "
-				if [ \"$HASH\" = \"\$(sha512sum \"{}\" |cut -c 1-128)\" -a \"\$(stat -c %Y \"{}\")\" = \"$STATY\" ]
-				then
-					echo \"[\$(date '+%F %H:%M:%S')]#linking: '{}'\" \"to\" \"'$FNEW'\"
-					ln -f \"{}\" '$FNEW'
-				else
-					exit 1
-				fi" \; -quit
-		done
-	fi
 	if [ "$UPDATEDB" = "YES" ]
 	then
 		echo "[$(date '+%F %H:%M:%S')]#create locate database"
@@ -262,11 +243,17 @@ DEST=$1
 			NOW=$(date --date="@$NOW" +%F-%H-%M-%S)
 			echo "[$(date '+%F %H:%M:%S')]#creating $ARCHIVE archive"
 			echo $NOW > "$DEST/0000/.daisync-archived"
-			if [ "$INCREMENTAL" = "YES" ]
+			if [ "$CLONESTYLE" = "none" ]
 			then
-				cp -apr "$DEST/0000" "$DEST/$NOW"
+				cp -a "$DEST/0000/." "$DEST/$NOW"
+			elif [ "$CLONESTYLE" = "hardlink" ]
+			then
+				cp -al "$DEST/0000/." "$DEST/$NOW"
+			elif [ "$CLONESTYLE" = "reflink" ]
+			then
+				cp -a --reflink=always "$DEST/0000/." "$DEST/$NOW"
 			else
-				cp -aprl "$DEST/0000" "$DEST/$NOW"
+				helpme "ERR-018"
 			fi
 		fi
 	fi
@@ -276,6 +263,6 @@ RTN=$?
 if [ $RTN -eq 0 ]
 then
 	mv "$DEST/.daisync-log.$$" "$DEST/0000/.daisync-log"
-	[ -f "$DEST/0000/.daisync-archived" ] && ln "$DEST/0000/.daisync-log" "$DEST/$(cat "$DEST/0000/.daisync-archived")/"
+	[ -f "$DEST/0000/.daisync-archived" ] && cp -a "$DEST/0000/.daisync-log" "$DEST/$(cat "$DEST/0000/.daisync-archived")/"
 fi
 exit $RTN
