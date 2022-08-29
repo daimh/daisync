@@ -1,7 +1,7 @@
-# daisync, a modifiable-time-machine backup tool
-daisync is a time-machine backup tool. MNI, U of michigan has been using it for decades to backup petabytes of files every night with time machine. End users can go to one of many daily backups to retrieve files on their own.
+# daisync, a time-machine backup tool
+daisync is an rsync-based time-machine backup tool. MNI, U of michigan has been using it for decades to backup petabytes of files every night with time machine. The end users can go to one of many daily backups to retrieve files on their own.
 
-Now with the new feature '-c reflink' enabled in March 2022, the time-machine backups are modifiable. It means any of the time-machine backups can be modified, while the modification on one backup won't affect any other time-machine backups.
+With the new feature '-c reflink' enabled in March 2022, the time-machine backups are modifiable. Any daisync backup can be modified, as the modification on one backup won't affect any other time-machine backups, because the same file across different backups are reflinked instead of hard-linked.
 
 ## Installation
 ```

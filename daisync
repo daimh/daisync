@@ -1,37 +1,35 @@
 #!/usr/bin/env bash
-set -eu
-set -o pipefail
+set -Eeuo pipefail
 trap "exit 1" TERM
 function helpme {
 	if [ $# -gt 0 ]
 	then
 		echo -e "$1" 1>&2
 	else
-		grep '#' /proc/$$/fd/255 | sed -n '/^#HELPME_START/,/^#HELPME_END/p' | grep -v "^#HELPME_" | sed -e "s/#//" | tr -s '\t' 1>&2 #20220313
+		grep '#' /proc/$$/fd/255 | sed -n '/^#HELPME_START/,/^#HELPME_END/p' | grep -v "^#HELPME_" | sed -e "s/#//" | tr -s '\t' 1>&2 #20220612
 	fi
-	PGID=$(cut -d ' ' -f 5 /proc/$$/stat)
-	kill -s TERM -- -$PGID
+	kill -s TERM -- -$(cut -d ' ' -f 5 /proc/$$/stat)
 }
 function hash_command {
 	hash $1 &> /dev/null || helpme "ERR-008: missing command $1"
 }
-ARCHIVE=""
-CLONESTYLE=hardlink
-KEEP=""
-NUM=10
-REMOVE=""
-UPDATEDB=NO
-ARGLIST=$@
-OPT_SHORT="hvn:c:a:s:r:k:d"
-OPT_LONG="help,version,num-of-backups:clone-style:,archive:,source:,removal-percentage:,keep:,updatedb"
-OPTS=$(getopt -o $OPT_SHORT --long $OPT_LONG -n daisync -- "$@")
-eval set -- "$OPTS"
+ArchiveFreq=""
+CloneStyle=hardlink
+Keep=""
+Num=10
+Remove=""
+Updatedb=NO
+ArgList=$@
+OptShort="hvn:c:a:s:r:k:d"
+OptLong="help,version,num-of-backups:clone-style:,archive:,source:,removal-percentage:,keep:,updatedb"
+Opts=$(getopt -o $OptShort --long $OptLong -n daisync -- "$@")
+eval set -- "$Opts"
 while [ $# -gt 0 ]
 do
 	case "$1" in
 #HELPME_START
 #NAME
-#	daisync, a modifiable-time-machine backup tool
+#	daisync, a time-machine backup tool
 #EXAMPLE
 #	mkdir -p backup1/0000; daisync -c reflink -s someone@localhost:dir1/ backup1
 #	mkdir -p backup2/0000; daisync -s someone@localhost:"dir1\ dir2" backup2
@@ -41,33 +39,32 @@ do
 		-h | --help) #print help information
 			helpme ;;
 		--version) #print version information
-			helpme "20220402" ;;
+			helpme "20220828" ;;
 		-v )	#verbose output
 			set -x
 			shift ;;
 		-n | --num-of-backups)	#NUM, maximum number of transient backups, default 10
-			let NUM=$2 || helpme "ERR-001: invalid number for -n: $2"
+			let Num=$2 || helpme "ERR-001: invalid number for -n: $2"
 			shift 2 ;;
 		-c | --clone-style)	#hardlink/reflink/none. Default is 'hardlink', unchanged files are hard-linked across all backups. With 'reflink', 'cp --reflink' are used prior to 'rsync', which doesn't support reflink yet as of 20020326. With 'none', unchanged files are not cloned and are only in 0000
-			CLONESTYLE=$2
-			[ "$CLONESTYLE" = "hardlink" -o "$CLONESTYLE" = "reflink" -o "$CLONESTYLE" = "none" ] || helpme "ERR-016: invalid parameter for -c: $2"
+			CloneStyle=$2
 			shift 2 ;;
 		-a | --archive)	#weekly/monthly/yearly, interval of permanent backups
 			[ "$2" = "weekly" -o "$2" = "monthly" -o "$2" = "yearly" ] || helpme "ERR-002: invalid paramter: -a $2"
-			ARCHIVE=$2
+			ArchiveFreq=$2
 			shift 2 ;;
 		-s | --source)	#SOURCE, such as "SERVER1:/home", "-e 'ssh -p 22' SERVER1:/home", "--exclude=*-excluded-from-daisync SERVER:/home". SOURCE is directly passed to rsync, can be local, rsync:// or rsync over remote shell, including ssh and rsh. Multiple '-s' are supported to backup some setup such as gluster storage nodes
-			SOURCES+=("$2")
+			Sources+=("$2")
 			shift 2 ;;
 		-r | --removal-percentage)	#PERCENTAGE, see '-k' below
-			let REMOVE=$2 || helpme "ERR-005: invalid number for -r: $2"
+			let Remove=$2 || helpme "ERR-005: invalid number for -r: $2"
 			shift 2 ;;
 		-k | --keep) #KEEP, keep removing the oldest transient backup until the DEST storage usage is below PERCENTAGE or there are only KEEP of backups left
-			let KEEP=$2 || helpme "ERR-006: invalid number for -k: $2"
+			let Keep=$2 || helpme "ERR-006: invalid number for -k: $2"
 			shift 2 ;;
 		-d | --updatedb)	#generate locate database to find file very quickly. A sample command of finding file is 'locate -d DEST/0000/.daisync-locate.db myfile'
 			hash_command updatedb
-			UPDATEDB=YES
+			Updatedb=YES
 			shift 1 ;;
 		--)
 			shift
@@ -85,184 +82,188 @@ do
 	esac
 done
 
-for CMD in flock rsync fuser df
+Link="/usr/bin/cp -a"
+if [ "$CloneStyle" = "hardlink" ]
+then
+	Link="${Link}l"
+elif [ "$CloneStyle" = "reflink" ]
+then
+	Link="${Link} --reflink=always"
+elif [ "$CloneStyle" != "none" ] 
+then
+	helpme "ERR-016: invalid parameter for -c: $2"
+fi
+for Cmd in flock rsync fuser df
 do
-	hash_command $CMD
+	hash_command $Cmd
 done
 set +u
-[ ${#SOURCES[@]} -gt 0 ] || helpme "ERR-007: missing -s"
+[ ${#Sources[@]} -gt 0 ] || helpme "ERR-007: missing -s"
 set -u
 [ $# -eq 1 ] || helpme "ERR-009: missing DEST"
-DEST=$1
-[ -d "$DEST" ] || helpme "ERR-010: no such a directory '$DEST'"
-[ -d "$DEST/0000" ] || helpme "ERR-011: run 'mkdir -p $DEST/0000' to explicitly initialize \"$DEST\" as a daisync directory"
-[ -z "$REMOVE" -a -z "$KEEP" ] || [ -n "$REMOVE" -a -n "$KEEP" ] || helpme "ERR-013: -k and -r need be used together"
-[ ${#SOURCES[@]} -eq 1 -o "$CLONESTYLE" = "hardlink" ] || helpme "ERR-014: multiple -s can work with '-c hardlink' only"
+Dest=$1
+[ -d "$Dest" ] || helpme "ERR-010: no such a directory '$Dest'"
+[ -d "$Dest/0000" ] || helpme "ERR-011: run 'mkdir -p $Dest/0000' to explicitly initialize \"$Dest\" as a daisync directory"
+[ -z "$Remove" -a -z "$Keep" ] || [ -n "$Remove" -a -n "$Keep" ] || helpme "ERR-013: -k and -r need be used together"
+[ ${#Sources[@]} -eq 1 -o "$CloneStyle" = "hardlink" ] || helpme "ERR-014: multiple -s can work with '-c hardlink' only"
 (
 	if ! flock -n 77
 	then
-		fuser "$DEST/.daisync-lock"
+		fuser "$Dest/.daisync-lock"
 		helpme "ERR-015: a daisync is still running, process id is above"
 	fi
-	echo "[$(date '+%F %H:%M:%S')]#daisync begin (daisync $ARGLIST)"
-	if [ $NUM -gt 1 ]
+	echo "[$(date '+%F %H:%M:%S')]#daisync begin (daisync $ArgList)"
+	if [ $Num -gt 1 ]
 	then
-		((LAST=NUM-1))
-		LAST=$(printf "%04d" $LAST)
+		((Last=Num-1))
+		Last=$(printf "%04d" $Last)
 	fi
-	if [ ! -d "$DEST/.daisync" ]
+	if [ ! -d "$Dest/.daisync" ]
 	then
-		if [ "$CLONESTYLE" = "none" ]
+		if [ "$CloneStyle" = "none" ]
 		then
-			mv "$DEST/0000" "$DEST/.daisync"
-			mkdir "$DEST/0000"
-			mv "$DEST/.daisync/.daisync-*" "$DEST/0000/" 2> /dev/null || :
-		elif [ "$CLONESTYLE" = "hardlink" ]
+			mv "$Dest/0000" "$Dest/.daisync"
+			mkdir "$Dest/0000"
+			mv "$Dest/.daisync/.daisync-*" "$Dest/0000/" 2> /dev/null || :
+		elif [ "$CloneStyle" = "hardlink" ]
 		then
-			mkdir "$DEST/.daisync"
-		elif [ "$CLONESTYLE" = "reflink" ]
+			mkdir "$Dest/.daisync"
+		elif [ "$CloneStyle" = "reflink" ]
 		then
-			touch -a "$DEST/0000/.daisync-log"
-			mkdir -p "$DEST/.daisync-reflink"
-			if ! cp -a --reflink=always "$DEST/0000/.daisync-log" "$DEST/.daisync-reflink"
+			touch -a "$Dest/0000/.daisync-log"
+			mkdir -p "$Dest/.daisync-reflink"
+			if ! cp -a --reflink=always "$Dest/0000/.daisync-log" "$Dest/.daisync-reflink"
 			then
-				rm -r "$DEST/.daisync-reflink"
-				helpme "ERR-017: \"$DEST\" doesn't support reflink. Try the latest version of xfs, btrfs, cifs, nfs 4.2, etc."
+				rm -r "$Dest/.daisync-reflink"
+				helpme "ERR-017: \"$Dest\" doesn't support reflink. Try the latest version of xfs, btrfs, cifs, nfs 4.2, etc."
 			fi
-			cp -au --reflink=always "$DEST/0000/." "$DEST/.daisync-reflink"
-			mv "$DEST/.daisync-reflink" "$DEST/.daisync"
+			cp -au --reflink=always "$Dest/0000/." "$Dest/.daisync-reflink"
+			mv "$Dest/.daisync-reflink" "$Dest/.daisync"
 		else
-			helpme "ERR-019"
+			helpme "ERR-018"
 		fi
 	fi
-	rm -f "$DEST/.daisync/.daisync-df"
-	if [ "$REMOVE" != "" ]
+	rm -f "$Dest/.daisync/.daisync-df"
+	if [ "$Remove" != "" ]
 	then
-		for ((SLEEP=1; ;SLEEP++))
+		for ((Sleep=1; ;Sleep++))
 		do
 			ps $$ &> /dev/null || break
-			((CUR_DFPCT=$(df -P "$DEST" | tail -n 1 |awk '{print $5}' | sed -e "s/%//") ))
-			if [ $CUR_DFPCT -ge $REMOVE ]
+			((CurDfPct=$(df -P "$Dest" | tail -n 1 |awk '{print $5}' | sed -e "s/%//") ))
+			if [ $CurDfPct -ge $Remove ]
 			then
-				(( CUR_BKNUM=$( (cd $DEST && ls -d ???? .daisync 2>/dev/null ) | wc -l ) ))
-				[[ $CUR_BKNUM -le $KEEP ]] && break
-				LAST=$( (cd $DEST && ls -d ???? | grep -v 0000) | sort -r | head -n 1 )
-				if [ -n "$LAST" ]
+				(( CurBkNum=$( (cd $Dest && ls -d ???? .daisync 2>/dev/null ) | wc -l ) ))
+				[[ $CurBkNum -le $Keep ]] && break
+				Last=$( (cd $Dest && ls -d ???? | grep -v 0000) | sort -r | head -n 1 )
+				if [ -n "$Last" ]
 				then
-					echo "[$(date '+%F %H:%M:%S')]#daisync removing $LAST"
-					rm -rf "$DEST/$LAST"
+					echo "[$(date '+%F %H:%M:%S')]#daisync removing $Last"
+					rm -rf "$Dest/$Last"
 					continue
 				fi
-			elif [ ! -d "$DEST/.daisync" ]
+			elif [ ! -d "$Dest/.daisync" ]
 			then
 				break
 			fi
-			if [ $SLEEP -gt 60 ]
+			if [ $Sleep -gt 60 ]
 			then
 				sleep 60
 			else
-				sleep $SLEEP
+				sleep $Sleep
 			fi
 		done
 	fi &
-	mapfile -t SOURCES < <(shuf -e -- "${SOURCES[@]}")
-	for SRC in "${SOURCES[@]}"
+	mapfile -t Sources < <(shuf -e -- "${Sources[@]}")
+	for Src in "${Sources[@]}"
 	do
-		if [ "$CLONESTYLE" = "none" ]
+		if [ "$CloneStyle" = "none" ]
 		then
-			PARAMS="-ab --backup-dir=../0000"
-		elif [ "$CLONESTYLE" = "hardlink" ]
+			Params="-ab --backup-dir=../0000"
+		elif [ "$CloneStyle" = "hardlink" ]
 		then
-			PARAMS="-a --link-dest=../0000"
+			Params="-a --link-dest=../0000"
 		else
-			PARAMS="-a"
+			Params="-a"
 		fi
-		[ ${#SOURCES[@]} -eq 1 ] && PARAMS="$PARAMS --delete"
-		[ -f "$DEST/.daisync-exclude-from" ] && PARAMS="$PARAMS --exclude-from=$DEST/.daisync-exclude-from"
-		echo "[$(date '+%F %H:%M:%S')]#rsync $PARAMS \"$SRC\" \"$DEST/.daisync\""
+		[ ${#Sources[@]} -eq 1 ] && Params="$Params --delete"
+		[ -f "$Dest/.daisync-exclude-from" ] && Params="$Params --exclude-from=$Dest/.daisync-exclude-from"
+		echo "[$(date '+%F %H:%M:%S')]#rsync $Params \"$Src\" \"$Dest/.daisync\""
 		set +e
-		bash -c "rsync $PARAMS $SRC \"$DEST/.daisync\""
-		RSYNC_RTN=$?
+		bash -c "rsync $Params $Src \"$Dest/.daisync\""
+		RsyncRtn=$?
 		set -e
-		[ $RSYNC_RTN -eq 0 -o $RSYNC_RTN -eq 24 ] || helpme "ERR-012: rsync '$SRC' failed with code $RSYNC_RTN"
+		[ $RsyncRtn -eq 0 -o $RsyncRtn -eq 24 ] || helpme "ERR-012: rsync '$Src' failed with code $RsyncRtn"
 	done
-	if [ "$UPDATEDB" = "YES" ]
+	if [ "$Updatedb" = "YES" ]
 	then
 		echo "[$(date '+%F %H:%M:%S')]#create locate database"
-		updatedb -l no -o "$DEST/.daisync/.daisync-locate.db" -U "$(realpath "$DEST/.daisync")"
-		chmod 400 "$DEST/.daisync/.daisync-locate.db"
+		updatedb -l no -o "$Dest/.daisync/.daisync-locate.db" -U "$(realpath "$Dest/.daisync")"
+		chmod 400 "$Dest/.daisync/.daisync-locate.db"
 	fi
-	df -Pm "$DEST" > "$DEST/.daisync/.daisync-df"
-	((NUM--))
-	for IDX in $(seq -f %04g $NUM -1 0)
+	df -Pm "$Dest" > "$Dest/.daisync/.daisync-df"
+	((Num--))
+	for Idx in $(seq -f %04g $Num -1 0)
 	do
-		if [ -d "$DEST/$IDX" ]
+		if [ -d "$Dest/$Idx" ]
 		then
-			if [ "$IDX" = "$(printf "%04d" $NUM)" ]
+			if [ "$Idx" = "$(printf "%04d" $Num)" ]
 			then
-				rm -rf "$DEST/$IDX"
+				rm -rf "$Dest/$Idx"
 			else
-				mv "$DEST/$IDX" "$DEST/$PREV"
+				mv "$Dest/$Idx" "$Dest/$Prev"
 			fi
 		fi
-		PREV=$IDX
+		Prev=$Idx
 	done
-	mv "$DEST/.daisync" "$DEST/0000"
+	mv "$Dest/.daisync" "$Dest/0000"
+	ln -f "$Dest/.daisync-log.$$" "$Dest/0000/.daisync-log"
 	wait
-	
-	if [ "$ARCHIVE" != "" ]
+	if [ "$ArchiveFreq" != "" ]
 	then
-		(( NOW=$(date +%s) ))
-		if [ "$ARCHIVE" = "weekly" ]
+		(( Now=$(date +%s) ))
+		if [ "$ArchiveFreq" = "weekly" ]
 		then
-			(( OFFSET=$(date --date="@$NOW" +%w) ))
-			(( START=$NOW - $OFFSET * 3600 * 24 ))
-		elif [ "$ARCHIVE" = "monthly" ]
+			(( Offset=$(date --date="@$Now" +%w) ))
+			(( Start=$Now - $Offset * 3600 * 24 ))
+		elif [ "$ArchiveFreq" = "monthly" ]
 		then
-			(( OFFSET=$(date --date="@$NOW" +%_d) ))
-			(( OFFSET-- ))
-			(( START=$NOW - $OFFSET * 3600 * 24 ))
-		elif [ "$ARCHIVE" = "yearly" ]
+			(( Offset=$(date --date="@$Now" +%_d) ))
+			(( Offset-- ))
+			(( Start=$Now - $Offset * 3600 * 24 ))
+		elif [ "$ArchiveFreq" = "yearly" ]
 		then
-			(( OFFSET=$(date --date="@$NOW" +%_j) ))
-			(( OFFSET-- ))
-			(( START=$NOW - $OFFSET * 3600 * 24 ))
+			(( Offset=$(date --date="@$Now" +%_j) ))
+			(( Offset-- ))
+			(( Start=$Now - $Offset * 3600 * 24 ))
 		fi
-		HAS_ARCHIVE=NO
-		for ((DT=$START; DT<=$NOW; DT+=3600 * 24))
+		ArchiveExists=NO
+		for ((Dt=$Start; Dt<=$Now; Dt+=3600 * 24))
 		do
-			DAY=$(date --date="@$DT" +%F)
-			if ls "$DEST"/$DAY-??-??-?? &> /dev/null
+			Day=$(date --date="@$Dt" +%F)
+			if ls "$Dest"/$Day-??-??-?? &> /dev/null
 			then
-				HAS_ARCHIVE=YES
+				ArchiveExists=YES
 				break
 			fi
 		done
-		if [ "$HAS_ARCHIVE" = "NO" ]
+		if [ "$ArchiveExists" = "NO" ]
 		then
-			NOW=$(date --date="@$NOW" +%F-%H-%M-%S)
-			echo "[$(date '+%F %H:%M:%S')]#creating $ARCHIVE archive"
-			echo $NOW > "$DEST/0000/.daisync-archived"
-			if [ "$CLONESTYLE" = "none" ]
-			then
-				cp -a "$DEST/0000/." "$DEST/$NOW"
-			elif [ "$CLONESTYLE" = "hardlink" ]
-			then
-				cp -al "$DEST/0000/." "$DEST/$NOW"
-			elif [ "$CLONESTYLE" = "reflink" ]
-			then
-				cp -a --reflink=always "$DEST/0000/." "$DEST/$NOW"
-			else
-				helpme "ERR-018"
-			fi
+			Now=$(date --date="@$Now" +%F-%H-%M-%S)
+			echo "[$(date '+%F %H:%M:%S')]#creating $ArchiveFreq archive"
+			echo $Now > "$Dest/0000/.daisync-archived"
+			$Link "$Dest/0000/." "$Dest/$Now"
 		fi
 	fi
 	echo "[$(date '+%F %H:%M:%S')]#daisync end"
-) 77> "$DEST/.daisync-lock" 2>&1 | tee "$DEST/.daisync-log.$$"
-RTN=$?
-if [ $RTN -eq 0 ]
+) 77> "$Dest/.daisync-lock" 2>&1 | tee "$Dest/.daisync-log.$$"
+Rtn=$?
+if [ $Rtn -eq 0 ]
 then
-	mv "$DEST/.daisync-log.$$" "$DEST/0000/.daisync-log"
-	[ -f "$DEST/0000/.daisync-archived" ] && cp -a "$DEST/0000/.daisync-log" "$DEST/$(cat "$DEST/0000/.daisync-archived")/"
+	rm "$Dest/.daisync-log.$$"
+	if [ -f "$Dest/0000/.daisync-archived" ] 
+	then
+		rm "$Dest/$(cat "$Dest/0000/.daisync-archived")/.daisync-log"
+		$Link "$Dest/0000/.daisync-log" "$Dest/$(cat "$Dest/0000/.daisync-archived")/"
+	fi
 fi
-exit $RTN
+exit $Rtn
