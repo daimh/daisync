@@ -6,9 +6,10 @@ function helpme {
 	then
 		echo -e "$1" 1>&2
 	else
-		grep '#' /proc/$$/fd/255 | sed -n '/^#HELPME_START/,/^#HELPME_END/p' | grep -v "^#HELPME_" | sed -e "s/#//" | tr -s '\t' 1>&2 #20220612
+		grep '#' /proc/$$/fd/255 |sed -n '/^#HELPME_START/,/^#HELPME_END/p' \
+			| grep -v "^#HELPME_" | sed -e "s/#//" | tr -s '\t' 1>&2
 	fi
-	kill -s TERM -- -$(cut -d ' ' -f 5 /proc/$$/stat)
+	kill 0
 }
 function hash_command {
 	hash $1 &> /dev/null || helpme "ERR-008: missing command $1"
@@ -39,7 +40,7 @@ do
 		-h | --help) #print help information
 			helpme ;;
 		--version) #print version information
-			helpme "20220828" ;;
+			helpme "20240406" ;;
 		-v )	#verbose output
 			set -x
 			shift ;;
@@ -155,12 +156,10 @@ Dest=$1
 				(( CurBkNum=$( (cd $Dest && ls -d ???? .daisync 2>/dev/null ) | wc -l ) ))
 				[[ $CurBkNum -le $Keep ]] && break
 				Last=$( (cd $Dest && ls -d ???? | grep -v 0000) | sort -r | head -n 1 )
-				if [ -n "$Last" ]
-				then
-					echo "[$(date '+%F %H:%M:%S')]#daisync removing $Last"
-					rm -rf "$Dest/$Last"
-					continue
-				fi
+				[ -z "$Last" ] && break
+				echo "[$(date '+%F %H:%M:%S')]#daisync removing $Last"
+				rm -rf "$Dest/$Last"
+				continue
 			elif [ ! -d "$Dest/.daisync" ]
 			then
 				break
@@ -192,7 +191,11 @@ Dest=$1
 		bash -c "rsync $Params $Src \"$Dest/.daisync\""
 		RsyncRtn=$?
 		set -e
-		[ $RsyncRtn -eq 0 -o $RsyncRtn -eq 24 ] || helpme "ERR-012: rsync '$Src' failed with code $RsyncRtn"
+		if [ $RsyncRtn -ne 0 -a $RsyncRtn -ne 24 ]
+		then
+			wait
+			helpme "ERR-012: rsync '$Src' failed with code $RsyncRtn"
+		fi
 	done
 	if [ "$Updatedb" = "YES" ]
 	then
