@@ -1,100 +1,144 @@
-# daisync, a time-machine backup tool
-daisync is an rsync-based time-machine backup tool. MNI, U of michigan has been using it for decades to backup petabytes of files every night with time machine. The end users can go to one of many daily backups to retrieve files on their own.
+# daisync — rsync-based Time-Machine Style Backup Tool
 
-With the new feature '-c reflink' enabled in March 2022, the time-machine backups are modifiable. Any daisync backup can be modified, as the modification on one backup won't affect any other time-machine backups, because the same file across different backups are reflinked instead of hard-linked.
+**daisync** is a powerful, lightweight, rsync-based backup tool that creates **time-machine-style** snapshots.
 
-## Installation
+It has been used for decades at the **Michigan Neuroscience Institute (MNI)**, University of Michigan, to back up **petabytes** of research data nightly across multiple large file servers.
+
+Since March 2022, the new **`-c reflink`** mode makes backups **modifiable**: changes to files in one snapshot do **not** affect others, thanks to **copy-on-write reflinks** instead of traditional hard links.
+
+## Key Features
+
+- Extremely space-efficient incremental backups using rsync + hardlinks/reflinks
+- Daily/periodic snapshots named like `0000`, `0001`, `0002`, … (or custom naming)
+- Users can browse and restore from **any** historical snapshot directly
+- Supports **reflink** copy-on-write (CoW) — edit files in old backups safely
+- Automatic detection of moved/renamed files with inode-based relinking (`-l`)
+- Custom exclusion via `.daisync-exclude-from` file (globs supported)
+- Pass-through of arbitrary **rsync** options
+- Optional fast file search via `locate` database (`-ds` / `--mk-locate-db`)
+- Single-file, dependency-free shell script — easy to deploy
+
+## Requirements
+
+- `rsync` ≥ 3.1.0 (for best reflink support — ideally ≥ 3.2.3)
+- Filesystem that supports **hard links** (most Linux filesystems)
+- For **reflink** mode (`-c reflink`): filesystem with CoW/reflink support  
+  → **btrfs**, **XFS** (with reflink feature), some modern **ext4** setups
+- `locate` / `updatedb` (optional — for `-ds` feature)
+
+## Installation (one-liner)
+
 ```
 wget https://raw.githubusercontent.com/daimh/daisync/master/daisync
 chmod +x daisync
-mv daisync ~/bin/ # or any directory in your PATH
+sudo mv daisync /usr/local/bin/   # just keep in ~/bin/ and make sure it is in your $PATH
 ```
 
-## Try it
+## Quick Start
 
-1. prepare a directory for tests
+##### 1. Prepare test data
 ```
-mkdir src
-seq 2 | split -l 1 - src/old
+mkdir -p src
+seq 10 | split -l 2 - src/file_
+
 tree src
 ```
 
-2. backs up all files under directory 'src' to 'dst'
+##### 2. First backup
 ```
-mkdir -p dst/0000
+mkdir -p dst
 daisync -s src/ dst
-tree dst
+
+tree dst               # → you should see dst/0000/
 ```
 
-3. change some files in src, and back them up again
+##### 3. Modify source → second backup
 ```
-seq 2 | split -l 1 - src/new
+echo "new content" > src/file_aa
 daisync -s src/ dst
-tree dst
+
+tree dst               # → dst/0000/  dst/0001/
 ```
 
-4. exclude a subdirectory from backup
+##### 4. Try reflink mode (if you have btrfs / XFS with reflink)
 ```
-mkdir src/this-is-excluded-from-daisync
-touch src/this-is-excluded-from-daisync/demo
-daisync -s src/ dst
-echo "*-excluded-from-daisync" > dst/.daisync-exclude-from
-daisync -s src/ dst
-tree dst
+daisync -c reflink -s src/ dst
+
+# Now you can safely modify files in dst/0001/ without breaking dst/0000/
 ```
 
-5. use rsync parameter to exclude file that is less/greater than 10 bytes
+
+## Common Usage Examples
+#### Exclude a directory permanently
 ```
-seq 10 > src/big
+# After first backup
+echo "this-is-excluded-from-daisync/" > dst/.daisync-exclude-from
+
+# Next backups will respect it automatically
 daisync -s src/ dst
-daisync -s "--max-size=10 src/" dst
-tree dst
 ```
 
-6. relink moved big file to save space
-
+#### Pass custom rsync options (e.g. size filters)
 ```
-seq 200000 > src/1M
-daisync -s src/ dst
-stat dst/0000/1M
-mv src/1M src/1M-MOVED
-daisync -l 1 -s src/ dst
-stat dst/0001/1M dst/0000/1M-MOVED | grep Inode #It shows the same Inode
+# Skip files > 1MB
+daisync -s "--max-size=1M" src/ dst
+
+# Or combine multiple options
+daisync -s "--exclude=*.tmp --max-size=50M" src/ dst
 ```
 
-7. create locate database to find file quickly
+#### Detect moved/renamed files (save huge space)
+```
+mv src/bigfile.dat src/bigfile-renamed.dat
+daisync -l 1 -s src/ dst    # -l 1 = look back 1 backup
+```
+
+#### Create fast search database (locate)
 ```
 daisync -ds src/ dst
-locate -d dst/0000/.daisync-locate.db new | sed -e "s/.*\.daisync\///" #sed is added to only show the relative path under 'dst/0000'
+
+# Then search (relative path only)
+locate -d dst/0003/.daisync-locate.db important.pdf
 ```
 
-## Help
+## Full Help
 ```
 daisync -h
 ```
 
-## Contribute
+## Important Notes
 
-Contributions are always welcome!
+Reflink mode (-c reflink) is experimental but very useful on supported filesystems.
+Traditional hardlink mode is more compatible but not modifiable (changing a file updates all linked backups).
+Always test on non-critical data first when using reflink or new features.
 
-## Copyright
+## Contributing
 
-Developed by [Manhong Dai](mailto:daimh@umich.edu)
+Contributions, bug reports, and suggestions are very welcome!
+Feel free to open issues or send pull requests.
 
-Copyright © 2002-2022 University of Michigan. License [GPLv3+](https://gnu.org/licenses/gpl.html): GNU GPL version 3 or later 
+## License
+GPLv3+
+
+Copyright © 2002–2026 University of Michigan / Manhong Dai
 
 This is free software: you are free to change and redistribute it.
+There is **NO WARRANTY**, to the extent permitted by law.
+[GNU General Public License v3.0](https://gnu.org/licenses/gpl.html)
 
-There is NO WARRANTY, to the extent permitted by law.
 
-## Acknowledgment
+## Acknowledgments
 
-Ruth Freedman, MPH, former administrator of MNI, UMICH
+Ruth Freedman, MPH
 
-Fan Meng, Ph.D., Research Associate Professor, Psychiatry, UMICH
+Fan Meng, Ph.D.
 
-Brock Palen, Director, Advanced Research Computing, UMICH
+Brock Palen
 
-Huda Akil, Ph.D., Director of MNI, UMICH
+Huda Akil, Ph.D.
 
-Stanley J. Watson, M.D., Ph.D., Director of MNI, UMICH
+Stanley J. Watson
+
+And the whole MNI/University of Michigan team that helped make this tool reliable for massive production use over two decades.
+
+Developed by Manhong Dai
